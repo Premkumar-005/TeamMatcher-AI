@@ -40,6 +40,10 @@ const projectSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'Project owner is required']
     },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
     category: {
       type: String,
       required: [true, 'Project category is required'],
@@ -114,6 +118,17 @@ const projectSchema = new mongoose.Schema(
     toObject: { virtuals: true }
   }
 );
+
+// Sync owner and ownerId before saving
+projectSchema.pre('save', function (next) {
+  if (!this.ownerId && this.owner) {
+    this.ownerId = this.owner;
+  }
+  if (!this.owner && this.ownerId) {
+    this.owner = this.ownerId;
+  }
+  next();
+});
 
 // Virtual for applications count
 projectSchema.virtual('applicationsCount', {

@@ -9,6 +9,7 @@ export const getNotifications = async (req, res, next) => {
   try {
     const notifications = await Notification.find({ recipient: req.user._id })
       .populate('sender', 'name avatar role title')
+      .populate('relatedProject', 'title owner ownerId category')
       .sort({ createdAt: -1 })
       .limit(50);
 

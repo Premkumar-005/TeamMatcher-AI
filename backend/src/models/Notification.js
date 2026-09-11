@@ -18,6 +18,9 @@ const notificationSchema = new mongoose.Schema(
         'APPLICATION_RECEIVED',
         'APPLICATION_ACCEPTED',
         'APPLICATION_REJECTED',
+        'TASK_STARTED',
+        'TASK_COMPLETED',
+        'FILE_SHARED',
         'TEAM_INVITATION',
         'TEAM_JOINED',
         'PROJECT_CLOSED',
@@ -34,6 +37,15 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Notification message is required'],
       trim: true
+    },
+    relatedProject: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      default: null
+    },
+    relatedEntity: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
     },
     link: {
       type: String,

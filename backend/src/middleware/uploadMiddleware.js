@@ -57,9 +57,36 @@ const workspaceStorage = multer.diskStorage({
   }
 });
 
+// Workspace File Filter — allow common project file types
+const workspaceFileFilter = (req, file, cb) => {
+  const allowedMimeTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png',
+    'image/jpeg',
+    'text/plain',
+    'application/zip',
+    'application/x-zip-compressed'
+  ];
+  const allowedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.txt', '.zip'];
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error(`File type not supported. Allowed: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, PNG, JPG, JPEG, TXT, ZIP`), false);
+  }
+};
+
 export const uploadWorkspaceFile = multer({
   storage: workspaceStorage,
-  limits: { fileSize: 25 * 1024 * 1024 } // 25 MB limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB limit
+  fileFilter: workspaceFileFilter
 });
 
 export default {

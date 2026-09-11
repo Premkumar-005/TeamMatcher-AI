@@ -83,7 +83,9 @@ export const applyToProject = async (req, res, next) => {
         type: 'APPLICATION_RECEIVED',
         title: 'New Worker Application',
         message: `${req.user.name} applied for "${project.title}"`,
-        link: `/requests`
+        relatedProject: project._id,
+        relatedEntity: existingApp._id,
+        link: `/requests?projectId=${project._id}`
       });
 
       return res.status(200).json({
@@ -110,7 +112,9 @@ export const applyToProject = async (req, res, next) => {
       type: 'APPLICATION_RECEIVED',
       title: 'New Worker Application',
       message: `${req.user.name} applied for "${project.title}"`,
-      link: `/requests`
+      relatedProject: project._id,
+      relatedEntity: application._id,
+      link: `/requests?projectId=${project._id}`
     });
 
     return res.status(201).json({
@@ -182,6 +186,18 @@ export const withdrawApplication = async (req, res, next) => {
 
     application.status = 'WITHDRAWN';
     await application.save();
+
+    // If a team exists for this project, ensure withdrawn worker is not in team members
+    const team = await Team.findOne({ project: application.project });
+    if (team) {
+      team.members = team.members.filter(
+        (m) => m.user.toString() !== req.user._id.toString()
+      );
+      const proj = await Project.findById(application.project);
+      await team.populate('members.user', 'skills');
+      team.skillCoverage = calculateTeamSkillCoverage(team.members, proj?.requiredSkills || []);
+      await team.save();
+    }
 
     return res.status(200).json({
       success: true,
@@ -310,14 +326,28 @@ export const acceptApplication = async (req, res, next) => {
     team.skillCoverage = coverage;
     await team.save();
 
-    // 5. Create notification for worker
+    // 5. Create project notification for worker (appears under Projects tab)
     await Notification.create({
       recipient: application.worker._id,
       sender: req.user._id,
       type: 'APPLICATION_ACCEPTED',
-      title: 'Application Accepted! 🎉',
-      message: `Congratulations! You have been accepted to join "${project.title}" team.`,
-      link: `/teams`
+      title: 'Application Accepted',
+      message: `Your application for "${project.title}" has been accepted.`,
+      relatedProject: project._id,
+      relatedEntity: application._id,
+      link: `/notifications`
+    });
+
+    // 6. Create team invitation notification for worker (appears under Team Invites tab)
+    await Notification.create({
+      recipient: application.worker._id,
+      sender: req.user._id,
+      type: 'TEAM_INVITATION',
+      title: 'Team Invitation',
+      message: `${req.user.name} invited you to join the team for "${project.title}".`,
+      relatedProject: project._id,
+      relatedEntity: team._id,
+      link: `/team-workspace`
     });
 
     return res.status(200).json({
@@ -362,14 +392,27 @@ export const rejectApplication = async (req, res, next) => {
     application.status = 'REJECTED';
     await application.save();
 
+    // If a team exists for this project, ensure the rejected worker is not in team members
+    const team = await Team.findOne({ project: project._id });
+    if (team) {
+      team.members = team.members.filter(
+        (m) => m.user.toString() !== application.worker._id.toString()
+      );
+      await team.populate('members.user', 'skills');
+      team.skillCoverage = calculateTeamSkillCoverage(team.members, project.requiredSkills || []);
+      await team.save();
+    }
+
     // Notify worker
     await Notification.create({
       recipient: application.worker._id,
       sender: req.user._id,
       type: 'APPLICATION_REJECTED',
-      title: 'Application Update',
-      message: `Your application for "${project.title}" was not selected at this time.`,
-      link: `/projects`
+      title: 'Application Rejected',
+      message: `Your application for "${project.title}" was rejected.`,
+      relatedProject: project._id,
+      relatedEntity: application._id,
+      link: `/requests`
     });
 
     return res.status(200).json({

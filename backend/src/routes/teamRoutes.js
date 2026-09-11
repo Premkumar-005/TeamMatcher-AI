@@ -8,7 +8,8 @@ import {
   deleteTeam,
   updateMemberRole,
   removeTeamMember,
-  leaveTeam
+  leaveTeam,
+  acceptTeamInvite
 } from '../controllers/teamController.js';
 import workspaceRoutes from './workspaceRoutes.js';
 import { protect } from '../middleware/authMiddleware.js';
@@ -45,6 +46,9 @@ router.delete('/:id/members/:userId', requireRole('OWNER'), removeTeamMember);
 
 // Leave Team (WORKER ONLY)
 router.put('/:id/leave', requireRole('WORKER'), leaveTeam);
+
+// Accept Team Invitation (WORKER ONLY)
+router.put('/:id/accept-invite', requireRole('WORKER'), acceptTeamInvite);
 
 // Mount Team Workspace Sub-routes (Tasks, Messages, Files)
 router.use('/:teamId', workspaceRoutes);
