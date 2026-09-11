@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Bell, Shield, LogOut, Lock, Save } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Shield, LogOut, Lock, Save, Sun, Moon, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import DashboardLayout from '../components/common/DashboardLayout';
 import Button from '../components/ui/Button';
 
 export default function SettingsPage() {
-  const { addToast, logoutUser, changeUserPassword } = useApp();
+  const { addToast, logoutUser, changeUserPassword, theme, setTheme } = useApp();
   const navigate = useNavigate();
 
   const [notifSettings, setNotifSettings] = useState({
@@ -61,7 +61,7 @@ export default function SettingsPage() {
             <span>Platform Settings</span>
           </h2>
           <p className="text-xs text-[#9CA3AF]">
-            Manage notification preferences, password security, and account access.
+            Manage appearance themes, notification preferences, password security, and account access.
           </p>
         </div>
 
@@ -73,6 +73,68 @@ export default function SettingsPage() {
         >
           Save Preferences
         </Button>
+      </div>
+
+      {/* Theme Selection */}
+      <div className="bg-[#0B0B0B] border border-[#1C1C1F] p-6 rounded-2xl space-y-4">
+        <div className="border-b border-[#1C1C1F] pb-3">
+          <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+            <Sun className="w-4 h-4 text-indigo-400" /> Theme
+          </h3>
+          <p className="text-xs text-[#71717A] mt-1">
+            Choose your preferred interface appearance. Changes apply across the entire application immediately.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {/* Dark Option */}
+          <button
+            type="button"
+            onClick={() => setTheme('dark')}
+            className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all cursor-pointer ${
+              theme === 'dark'
+                ? 'bg-[#141414] border-indigo-500 ring-1 ring-indigo-500/50 text-white'
+                : 'bg-[#0E0E10] border-[#1C1C1F] text-[#A1A1AA] hover:border-[#333338] hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl" role="img" aria-label="Dark">🌙</span>
+              <div>
+                <h4 className="text-xs font-semibold text-white">Dark</h4>
+                <p className="text-[11px] text-[#71717A] mt-0.5">Classic high-contrast dark theme (Default)</p>
+              </div>
+            </div>
+            {theme === 'dark' && (
+              <span className="text-xs text-indigo-400 font-semibold flex items-center gap-1 shrink-0">
+                <Check className="w-4 h-4" /> Active
+              </span>
+            )}
+          </button>
+
+          {/* Light Option */}
+          <button
+            type="button"
+            onClick={() => setTheme('light')}
+            className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all cursor-pointer ${
+              theme === 'light'
+                ? 'bg-white border-indigo-600 ring-1 ring-indigo-600/50 text-slate-900 shadow-sm'
+                : 'bg-[#0E0E10] border-[#1C1C1F] text-[#A1A1AA] hover:border-[#333338] hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl" role="img" aria-label="Light">☀️</span>
+              <div>
+                <h4 className="text-xs font-semibold text-white">Light</h4>
+                <p className="text-[11px] text-[#71717A] mt-0.5">Clean, bright high-readability theme</p>
+              </div>
+            </div>
+            {theme === 'light' && (
+              <span className="text-xs text-indigo-600 font-semibold flex items-center gap-1 shrink-0">
+                <Check className="w-4 h-4" /> Active
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Notifications Section */}

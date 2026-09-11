@@ -194,6 +194,11 @@ export const api = {
     return response.data;
   },
 
+  acceptTeamInvite: async (teamId) => {
+    const response = await apiClient.put(`/teams/${teamId}/accept-invite`);
+    return response.data;
+  },
+
   // =================== WORKSPACE ===================
   getTeamTasks: async (teamId) => {
     const response = await apiClient.get(`/teams/${teamId}/tasks`);
@@ -235,6 +240,34 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
+  },
+
+  downloadTeamFile: async (teamId, fileId, fileName) => {
+    const token = localStorage.getItem('tm_token') || localStorage.getItem('token');
+    const url = `${API_BASE_URL}/teams/${teamId}/files/${fileId}/download`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName || 'download';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+
+    return { success: true };
   },
 
   // =================== NOTIFICATIONS ===================

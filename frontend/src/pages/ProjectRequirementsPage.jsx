@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, FolderGit2, PlusCircle, X, CheckCircle2, Sparkles, Building2 } from 'lucide-react';
+import { Search, Filter, FolderGit2, PlusCircle, X, CheckCircle2, Sparkles, Building2, Trash2, AlertTriangle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import DashboardLayout from '../components/common/DashboardLayout';
 import ProjectCard from '../components/ui/ProjectCard';
 import Button from '../components/ui/Button';
 
 export default function ProjectRequirementsPage() {
-  const { projects, setSelectedProject, user, createNewProject } = useApp();
+  const { projects, setSelectedProject, user, createNewProject, deleteProject } = useApp();
   const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  // deleteConfirm: null | { project } — stores the project pending deletion
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // New Project Form State (Owner)
   const [newProject, setNewProject] = useState({
@@ -77,6 +80,14 @@ export default function ProjectRequirementsPage() {
         budgetAmount: 4000
       });
     }
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    await deleteProject(deleteConfirm._id || deleteConfirm.id);
+    setDeleting(false);
+    setDeleteConfirm(null);
   };
 
   const filteredProjects = projects.filter((p) => {
@@ -166,17 +177,49 @@ export default function ProjectRequirementsPage() {
       {/* Projects Card Grid */}
       {filteredProjects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-          {filteredProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onSelect={(p) => {
-                setSelectedProject(p);
-                navigate(`/projects/${p.id}`);
-              }}
-              userSkills={user.skills || []}
-            />
-          ))}
+          {filteredProjects.map((project) => {
+            // Check if the logged-in owner owns this specific project
+            const ownerId = project.owner?._id || project.owner?.id || project.owner;
+            const currentUserId = user?.id || user?._id;
+            const isMyProject = isOwner && ownerId && currentUserId && ownerId.toString() === currentUserId.toString();
+
+            return (
+              <div key={project.id || project._id} className="flex flex-col">
+                {/* Project Card — clicking the card navigates to details */}
+                <ProjectCard
+                  project={project}
+                  onSelect={(p) => {
+                    setSelectedProject(p);
+                    navigate(`/projects/${p.id}`);
+                  }}
+                  userSkills={user.skills || []}
+                />
+                {/* Action row below the card */}
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      setSelectedProject(project);
+                      navigate(`/projects/${project.id || project._id}`);
+                    }}
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-400 border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/40 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    View Project Details →
+                  </button>
+                  {/* Delete Project — only for the owner who created this project */}
+                  {isMyProject && (
+                    <button
+                      onClick={() => setDeleteConfirm(project)}
+                      className="flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500/40 transition-colors flex items-center justify-center gap-1.5"
+                      title="Delete project"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Project
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="bg-[#0B0B0B] border border-[#1C1C1F] p-12 rounded-2xl text-center space-y-3">
@@ -331,6 +374,68 @@ export default function ProjectRequirementsPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0B0B0B] border border-[#1C1C1F] w-full max-w-md rounded-2xl p-6 space-y-5 shadow-2xl animate-fade-in">
+            {/* Header */}
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Delete Project?</h3>
+                <p className="text-xs text-[#71717A] mt-0.5">
+                  &ldquo;{deleteConfirm.title}&rdquo;
+                </p>
+              </div>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="ml-auto text-[#71717A] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Stronger warning if project already has applications or a team */}
+            {(deleteConfirm.totalApplicationsCount > 0 || deleteConfirm.team) ? (
+              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-300 leading-relaxed">
+                  <span className="font-semibold">Warning:</span> This project has
+                  {deleteConfirm.totalApplicationsCount > 0 && ` ${deleteConfirm.totalApplicationsCount} application(s)`}
+                  {deleteConfirm.totalApplicationsCount > 0 && deleteConfirm.team && ' and'}
+                  {deleteConfirm.team && ' an active team'}
+                  . Deleting will permanently remove all applications, team membership, workspace tasks, and shared files.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-[#71717A] leading-relaxed">
+                Are you sure you want to delete this project? This action cannot be undone and will permanently remove the project, all applications, and any associated team workspace.
+              </p>
+            )}
+
+            {/* Buttons */}
+            <div className="flex items-center gap-2.5 pt-1 border-t border-[#1C1C1F]">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 rounded-lg text-xs font-medium text-[#D4D4D8] bg-[#0E0E10] border border-[#27272A] hover:bg-[#18181B] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirmed}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleting ? 'Deleting...' : 'Delete Project'}
+              </button>
+            </div>
           </div>
         </div>
       )}

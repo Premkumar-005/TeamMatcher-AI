@@ -102,4 +102,350 @@
   background: #2E2E33;
 }
 
+/* ==========================================================================
+   REAL LIGHT THEME SYSTEM
+   Applies across the entire application with high contrast, elegant spacing,
+   and crisp readability when html.light or [data-theme="light"] is active.
+   ========================================================================== */
+
+html.light,
+[data-theme="light"] {
+  --bg-main: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F1F5F9;
+  --border-subtle: #E2E8F0;
+  --border-medium: #CBD5E1;
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-subtle: rgba(79, 70, 229, 0.08);
+}
+
+html.light body,
+[data-theme="light"] body {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+/* App root container backgrounds */
+html.light .bg-\[\#050505\],
+html.light [class*="bg-[#050505]"],
+[data-theme="light"] .bg-\[\#050505\],
+[data-theme="light"] [class*="bg-[#050505]"] {
+  background-color: #F8FAFC !important;
+}
+
+/* Primary surface & cards */
+html.light .bg-\[\#0B0B0B\],
+html.light [class*="bg-[#0B0B0B]"],
+html.light .saas-card,
+[data-theme="light"] .bg-\[\#0B0B0B\],
+[data-theme="light"] [class*="bg-[#0B0B0B]"],
+[data-theme="light"] .saas-card {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+}
+
+/* Sidebar & secondary panels */
+html.light aside,
+html.light .bg-\[\#09090B\],
+html.light [class*="bg-[#09090B]"],
+[data-theme="light"] aside,
+[data-theme="light"] .bg-\[\#09090B\],
+[data-theme="light"] [class*="bg-[#09090B]"] {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+/* TopBar / Header */
+html.light header,
+html.light .bg-\[\#050505\]\/80,
+[data-theme="light"] header,
+[data-theme="light"] .bg-\[\#050505\]\/80 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  border-color: #E2E8F0 !important;
+}
+
+/* Elevated, nested surface items, inner list rows & inactive tabs */
+html.light .bg-\[\#0E0E10\],
+html.light [class*="bg-[#0E0E10]"],
+html.light .bg-\[\#111111\],
+html.light [class*="bg-[#111111]"],
+html.light .bg-\[\#121214\],
+html.light .bg-\[\#121215\],
+html.light .bg-\[\#121216\],
+html.light .bg-\[\#141414\],
+html.light [class*="bg-[#141414]"],
+html.light .bg-\[\#18181B\],
+html.light .bg-\[\#1C1C20\],
+html.light .bg-\[\#1C1C22\],
+html.light .bg-\[\#1F1F23\],
+[data-theme="light"] .bg-\[\#0E0E10\],
+[data-theme="light"] [class*="bg-[#0E0E10]"],
+[data-theme="light"] .bg-\[\#111111\],
+[data-theme="light"] [class*="bg-[#111111]"],
+[data-theme="light"] .bg-\[\#121214\],
+[data-theme="light"] .bg-\[\#121215\],
+[data-theme="light"] .bg-\[\#121216\],
+[data-theme="light"] .bg-\[\#141414\],
+[data-theme="light"] [class*="bg-[#141414]"],
+[data-theme="light"] .bg-\[\#18181B\],
+[data-theme="light"] .bg-\[\#1C1C20\],
+[data-theme="light"] .bg-\[\#1C1C22\],
+[data-theme="light"] .bg-\[\#1F1F23\] {
+  background-color: #F1F5F9 !important;
+}
+
+/* Hover surfaces */
+html.light .saas-card-interactive:hover,
+html.light .hover\:bg-\[\#0E0E10\]:hover,
+html.light .hover\:bg-\[\#101012\]:hover,
+html.light .hover\:bg-\[\#121214\]:hover,
+html.light .hover\:bg-\[\#141414\]:hover,
+html.light .hover\:bg-\[\#18181B\]:hover,
+[data-theme="light"] .saas-card-interactive:hover,
+[data-theme="light"] .hover\:bg-\[\#0E0E10\]:hover,
+[data-theme="light"] .hover\:bg-\[\#101012\]:hover,
+[data-theme="light"] .hover\:bg-\[\#121214\]:hover,
+[data-theme="light"] .hover\:bg-\[\#141414\]:hover,
+[data-theme="light"] .hover\:bg-\[\#18181B\]:hover {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+}
+
+/* Borders across elements */
+html.light .border-\[\#1C1C1F\],
+html.light [class*="border-[#1C1C1F]"],
+html.light .border-\[\#1F1F23\],
+html.light .border-\[\#222226\],
+html.light .border-\[\#27272A\],
+html.light .border-\[\#2B2B33\],
+html.light .border-\[\#2E2E33\],
+html.light .border-\[\#333338\],
+html.light .border-\[\#3F3F46\],
+[data-theme="light"] .border-\[\#1C1C1F\],
+[data-theme="light"] [class*="border-[#1C1C1F]"],
+[data-theme="light"] .border-\[\#1F1F23\],
+[data-theme="light"] .border-\[\#222226\],
+[data-theme="light"] .border-\[\#27272A\],
+[data-theme="light"] .border-\[\#2B2B33\],
+[data-theme="light"] .border-\[\#2E2E33\],
+[data-theme="light"] .border-\[\#333338\],
+[data-theme="light"] .border-\[\#3F3F46\] {
+  border-color: #E2E8F0 !important;
+}
+
+/* Primary text & headings */
+html.light .text-white,
+html.light .text-\[\#F5F5F5\],
+html.light .text-\[\#F4F4F5\],
+[data-theme="light"] .text-white,
+[data-theme="light"] .text-\[\#F5F5F5\],
+[data-theme="light"] .text-\[\#F4F4F5\] {
+  color: #0F172A !important;
+}
+
+/* Secondary text */
+html.light .text-\[\#D4D4D8\],
+html.light .text-\[\#E4E4E7\],
+html.light .text-\[\#A1A1AA\],
+[data-theme="light"] .text-\[\#D4D4D8\],
+[data-theme="light"] .text-\[\#E4E4E7\],
+[data-theme="light"] .text-\[\#A1A1AA\] {
+  color: #334155 !important;
+}
+
+/* Muted text & descriptions */
+html.light .text-\[\#9CA3AF\],
+html.light .text-\[\#71717A\],
+html.light .text-\[\#52525B\],
+[data-theme="light"] .text-\[\#9CA3AF\],
+[data-theme="light"] .text-\[\#71717A\],
+[data-theme="light"] .text-\[\#52525B\] {
+  color: #64748B !important;
+}
+
+/* Input elements */
+html.light .saas-input,
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light textarea,
+html.light select,
+[data-theme="light"] .saas-input,
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+html.light .saas-input:focus,
+html.light input:focus,
+html.light textarea:focus,
+html.light select:focus,
+[data-theme="light"] .saas-input:focus,
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus {
+  border-color: #6366F1 !important;
+  box-shadow: 0 0 0 1px #6366F1 !important;
+}
+
+html.light .saas-input::placeholder,
+html.light input::placeholder,
+html.light textarea::placeholder,
+[data-theme="light"] .saas-input::placeholder,
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Primary buttons in Light mode */
+html.light button.bg-white,
+html.light .btn-primary-theme,
+[data-theme="light"] button.bg-white,
+[data-theme="light"] .btn-primary-theme {
+  background-color: #0F172A !important;
+  color: #FFFFFF !important;
+  border-color: #0F172A !important;
+}
+
+html.light button.bg-white:hover,
+[data-theme="light"] button.bg-white:hover {
+  background-color: #1E293B !important;
+}
+
+html.light button.bg-white *,
+[data-theme="light"] button.bg-white * {
+  color: #FFFFFF !important;
+}
+
+/* Preserve crisp white text on colored buttons & badges */
+html.light .bg-indigo-600,
+html.light .bg-indigo-500,
+html.light .bg-emerald-600,
+html.light .bg-emerald-500,
+html.light .bg-rose-600,
+html.light .bg-rose-500,
+html.light .bg-blue-600,
+html.light .bg-purple-600,
+html.light button.bg-indigo-600,
+html.light button.bg-indigo-500,
+html.light .bg-indigo-600 *,
+html.light .bg-indigo-500 *,
+html.light .bg-emerald-600 *,
+html.light .bg-rose-600 *,
+html.light button.bg-indigo-600 *,
+[data-theme="light"] .bg-indigo-600,
+[data-theme="light"] .bg-indigo-500,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] .bg-emerald-500,
+[data-theme="light"] .bg-rose-600,
+[data-theme="light"] .bg-rose-500,
+[data-theme="light"] .bg-blue-600,
+[data-theme="light"] .bg-purple-600,
+[data-theme="light"] button.bg-indigo-600,
+[data-theme="light"] button.bg-indigo-500,
+[data-theme="light"] .bg-indigo-600 *,
+[data-theme="light"] .bg-indigo-500 *,
+[data-theme="light"] .bg-emerald-600 *,
+[data-theme="light"] .bg-rose-600 *,
+[data-theme="light"] button.bg-indigo-600 * {
+  color: #FFFFFF !important;
+}
+
+/* Enhanced high-contrast colored badges for light backgrounds */
+html.light .text-indigo-300,
+html.light .text-indigo-400,
+[data-theme="light"] .text-indigo-300,
+[data-theme="light"] .text-indigo-400 {
+  color: #4338CA !important;
+}
+
+html.light .text-emerald-300,
+html.light .text-emerald-400,
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-emerald-400 {
+  color: #047857 !important;
+}
+
+html.light .text-amber-300,
+html.light .text-amber-400,
+[data-theme="light"] .text-amber-300,
+[data-theme="light"] .text-amber-400 {
+  color: #B45309 !important;
+}
+
+html.light .text-rose-300,
+html.light .text-rose-400,
+[data-theme="light"] .text-rose-300,
+[data-theme="light"] .text-rose-400 {
+  color: #BE123C !important;
+}
+
+html.light .bg-indigo-500\/10,
+html.light .bg-indigo-500\/15,
+[data-theme="light"] .bg-indigo-500\/10,
+[data-theme="light"] .bg-indigo-500\/15 {
+  background-color: #EEF2FF !important;
+  border-color: #C7D2FE !important;
+}
+
+html.light .bg-emerald-500\/10,
+html.light .bg-emerald-500\/15,
+[data-theme="light"] .bg-emerald-500\/10,
+[data-theme="light"] .bg-emerald-500\/15 {
+  background-color: #ECFDF5 !important;
+  border-color: #A7F3D0 !important;
+}
+
+html.light .bg-amber-500\/10,
+html.light .bg-amber-500\/20,
+[data-theme="light"] .bg-amber-500\/10,
+[data-theme="light"] .bg-amber-500\/20 {
+  background-color: #FFFBEB !important;
+  border-color: #FDE68A !important;
+}
+
+html.light .bg-rose-500\/10,
+html.light .bg-rose-500\/20,
+[data-theme="light"] .bg-rose-500\/10,
+[data-theme="light"] .bg-rose-500\/20 {
+  background-color: #FFF1F2 !important;
+  border-color: #FECDD3 !important;
+}
+
+/* Sidebar navigation active item in light mode */
+html.light aside a.bg-\[\#141414\],
+[data-theme="light"] aside a.bg-\[\#141414\] {
+  background-color: #EEF2FF !important;
+  color: #4338CA !important;
+  font-weight: 600 !important;
+}
+
+html.light aside a.bg-\[\#141414\] .text-indigo-400,
+[data-theme="light"] aside a.bg-\[\#141414\] .text-indigo-400 {
+  color: #4F46E5 !important;
+}
+
+/* Light mode scrollbars */
+html.light ::-webkit-scrollbar-track,
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #F8FAFC;
+}
+
+html.light ::-webkit-scrollbar-thumb,
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
 

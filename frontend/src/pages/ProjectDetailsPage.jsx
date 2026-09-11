@@ -24,44 +24,69 @@ import api from '../services/api';
 
 export default function ProjectDetailsPage() {
   const { id } = useParams();
-  const { projects, user, applyToProjectAction } = useApp();
+  const { projects, user, myApplications = [], applyToProjectAction } = useApp();
   const navigate = useNavigate();
 
-  const [project, setProject] = useState(() => projects.find((p) => p.id === id || p._id === id) || projects[0]);
+  const [project, setProject] = useState(() => projects.find((p) => p.id === id || p._id === id) || null);
+  const [loading, setLoading] = useState(!project);
+  const [hasApplied, setHasApplied] = useState(() => {
+    return Array.isArray(myApplications) && myApplications.some(
+      (a) => ((a.project?._id || a.project?.id || a.project)?.toString() === id) && a.status !== 'WITHDRAWN'
+    );
+  });
   const [matchData, setMatchData] = useState(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [coverMessage, setCoverMessage] = useState('');
   const [applying, setApplying] = useState(false);
-  const [hasApplied, setHasApplied] = useState(false);
 
   const isOwner = user?.role === 'OWNER';
-  const isProjectOwner = isOwner && (project.owner?._id === user._id || project.owner === user._id);
+  const currentUserId = (user?._id || user?.id)?.toString();
+  const projectOwnerId = (
+    project?.owner?._id ||
+    (typeof project?.owner === 'string' ? project?.owner : null) ||
+    project?.ownerId?._id ||
+    (typeof project?.ownerId === 'string' ? project?.ownerId : null)
+  )?.toString();
+
+  const isProjectOwner = Boolean(
+    isOwner && currentUserId && projectOwnerId && currentUserId === projectOwnerId
+  );
+
+  const ownerName =
+    (typeof project?.owner === 'object' && project?.owner?.name) ||
+    (typeof project?.ownerId === 'object' && project?.ownerId?.name) ||
+    (typeof project?.owner === 'string' && project?.ownerName ? project.ownerName : null) ||
+    'Unknown';
 
   // Fetch project details & live match from backend
   useEffect(() => {
+    let isMounted = true;
+
     const fetchDetails = async () => {
       try {
         const res = await api.getProjectById(id);
-        if (res.success && res.data?.project) {
+        if (isMounted && res.success && res.data?.project) {
           const p = res.data.project;
           setProject({
             ...p,
-            id: p._id,
+            id: p._id || p.id,
             requiredSkills: (p.requiredSkills || []).map((s) => (typeof s === 'string' ? s : s.name))
           });
 
-          if (p.userApplication) {
+          if (p.userApplication && p.userApplication.status !== 'WITHDRAWN') {
             setHasApplied(true);
           }
         }
       } catch (e) {
-        // Fallback to local project
+        console.warn('Could not fetch project details from backend:', e.message);
+      } finally {
+        if (isMounted) setLoading(false);
       }
 
       if (user?.role === 'WORKER') {
         try {
           const matchRes = await api.getProjectMatch(id);
-          if (matchRes.success && matchRes.data) {
+          if (isMounted && matchRes.success && matchRes.data) {
             setMatchData(matchRes.data);
           }
         } catch (e) {
@@ -71,10 +96,53 @@ export default function ProjectDetailsPage() {
     };
 
     fetchDetails();
+
+    return () => {
+      isMounted = false;
+    };
   }, [id, user?.role]);
 
+  // Keep hasApplied synced if myApplications updates
+  useEffect(() => {
+    if (Array.isArray(myApplications) && myApplications.some(
+      (a) => ((a.project?._id || a.project?.id || a.project)?.toString() === id) && a.status !== 'WITHDRAWN'
+    )) {
+      setHasApplied(true);
+    }
+  }, [myApplications, id]);
+
+  if (loading && !project) {
+    return (
+      <DashboardLayout title="Loading Project...">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            <p className="text-xs text-[#71717A]">Loading real project details from database...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!project) {
+    return (
+      <DashboardLayout title="Project Not Found">
+        <div className="bg-[#0B0B0B] border border-[#1C1C1F] p-12 rounded-2xl text-center space-y-4">
+          <AlertCircle className="w-10 h-10 text-amber-400 mx-auto" />
+          <h2 className="text-lg font-bold text-white">Project Not Found</h2>
+          <p className="text-xs text-[#71717A] max-w-md mx-auto">
+            The project you are looking for does not exist or has been removed.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/projects')}>
+            Back to Projects Directory
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   // Fallback match calculations if matchData is not loaded yet
-  const userSkillNames = (user.skills || []).map((s) => (typeof s === 'string' ? s : s.name).toLowerCase());
+  const userSkillNames = (user?.skills || []).map((s) => (typeof s === 'string' ? s : s.name).toLowerCase());
   const projectSkillNames = (project.requiredSkills || []).map((s) => (typeof s === 'string' ? s : s.name));
 
   const availableSkills = projectSkillNames.filter((s) =>
@@ -103,7 +171,7 @@ export default function ProjectDetailsPage() {
   };
 
   return (
-    <DashboardLayout title={`Project — ${project.title}`}>
+    <DashboardLayout title={`Project — ${project.title || 'Details'}`}>
       {/* Back Navigation & Category */}
       <div className="flex items-center justify-between border-b border-[#1C1C1F] pb-4">
         <button
@@ -131,36 +199,57 @@ export default function ProjectDetailsPage() {
             </p>
           </div>
 
-          <div className="shrink-0 flex items-center gap-2.5">
+          <div className="shrink-0 flex flex-wrap items-center gap-3">
             {isProjectOwner ? (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => navigate(`/requests?projectId=${project.id || project._id}`)}
-                icon={Users}
-              >
-                Review Applicants
-              </Button>
+              <>
+                <span className="text-xs text-[#71717A] font-medium">
+                  Project Owner: <strong className="text-white font-semibold">{ownerName}</strong>
+                </span>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => navigate(`/requests?projectId=${project.id || project._id}`)}
+                  icon={Users}
+                >
+                  Review Applicants
+                </Button>
+              </>
             ) : isOwner ? (
-              <span className="text-xs text-[#71717A] italic">Project Owner View</span>
-            ) : hasApplied ? (
-              <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Application Submitted
+              <span className="text-xs text-[#71717A] font-medium">
+                Project Owner: <strong className="text-white font-semibold">{ownerName}</strong>
               </span>
+            ) : hasApplied ? (
+              <>
+                <span className="text-xs text-[#71717A] font-medium hidden sm:inline-block">
+                  Project Owner: <strong className="text-white font-semibold">{ownerName}</strong>
+                </span>
+                <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Application Submitted
+                </span>
+              </>
             ) : (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => setShowApplyModal(true)}
-                icon={Send}
-              >
-                Apply to Project
-              </Button>
+              <>
+                <span className="text-xs text-[#71717A] font-medium hidden sm:inline-block">
+                  Project Owner: <strong className="text-white font-semibold">{ownerName}</strong>
+                </span>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => setShowApplyModal(true)}
+                  icon={Send}
+                >
+                  Apply to Project
+                </Button>
+              </>
             )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-6 pt-3 border-t border-[#1C1C1F] text-xs text-[#71717A] font-medium">
+          <span className="flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+            Project Owner: <strong className="text-[#D4D4D8]">{ownerName}</strong>
+          </span>
           <span className="flex items-center gap-1.5">
             <Users className="w-3.5 h-3.5 text-indigo-400" />
             Target Team Size: <strong className="text-[#D4D4D8]">{project.teamSize || 4} Members</strong>

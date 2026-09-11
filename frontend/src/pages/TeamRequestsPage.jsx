@@ -38,36 +38,68 @@ export default function TeamRequestsPage() {
   const [ownerApplications, setOwnerApplications] = useState([]);
   const [loadingApps, setLoadingApps] = useState(false);
 
+  const currentUserId = (user?._id || user?.id)?.toString();
+
+  const isProjectOwnedByCurrentUser = useCallback(
+    (p) => {
+      const pOwnerId = (
+        p.owner?._id ||
+        p.owner?.id ||
+        (typeof p.owner === 'string' ? p.owner : null) ||
+        p.ownerId?._id ||
+        p.ownerId?.id ||
+        (typeof p.ownerId === 'string' ? p.ownerId : null)
+      )?.toString();
+      return Boolean(pOwnerId && currentUserId && pOwnerId === currentUserId);
+    },
+    [currentUserId]
+  );
+
+  const ownerProjects = projects.filter(isProjectOwnedByCurrentUser);
+
+  // Count ONLY real PENDING applications for the logged-in owner's projects
+  const pendingReviewCount = ownerApplications.filter(
+    (app) => app.status === 'PENDING'
+  ).length;
+
   // Fetch applications for Owner's projects (filtered if selectedProjectId is present)
   const fetchOwnerApps = useCallback(async () => {
     if (!isOwner) return;
     setLoadingApps(true);
     try {
       if (selectedProjectId) {
-        const p = projects.find((proj) => (proj.id || proj._id) === selectedProjectId);
-        const res = await api.getProjectApplications(selectedProjectId);
-        if (res.success && Array.isArray(res.data)) {
-          const withProject = res.data.map((app) => ({
-            ...app,
-            projectTitle: p?.title || app.project?.title || 'Selected Project',
-            projectId: selectedProjectId
-          }));
-          setOwnerApplications(withProject);
+        const p = projects.find(
+          (proj) =>
+            (proj.id || proj._id)?.toString() === selectedProjectId &&
+            isProjectOwnedByCurrentUser(proj)
+        );
+        if (p) {
+          const res = await api.getProjectApplications(selectedProjectId);
+          if (res.success && Array.isArray(res.data)) {
+            const withProject = res.data.map((app) => ({
+              ...app,
+              projectTitle: p?.title || app.project?.title || 'Selected Project',
+              projectId: selectedProjectId
+            }));
+            setOwnerApplications(withProject);
+          } else {
+            setOwnerApplications([]);
+          }
         } else {
           setOwnerApplications([]);
         }
       } else {
-        const ownerProjects = projects.filter(
-          (p) => p.owner?._id === user._id || p.owner === user._id
-        );
+        const owned = projects.filter(isProjectOwnedByCurrentUser);
         let allApps = [];
-        for (const p of ownerProjects) {
-          const res = await api.getProjectApplications(p.id || p._id);
+        for (const p of owned) {
+          const pId = (p.id || p._id)?.toString();
+          if (!pId) continue;
+          const res = await api.getProjectApplications(pId);
           if (res.success && Array.isArray(res.data)) {
             const withProject = res.data.map((app) => ({
               ...app,
               projectTitle: p.title,
-              projectId: p.id || p._id
+              projectId: pId
             }));
             allApps = [...allApps, ...withProject];
           }
@@ -78,7 +110,7 @@ export default function TeamRequestsPage() {
       console.warn('Could not fetch owner applications:', e.message);
     }
     setLoadingApps(false);
-  }, [isOwner, selectedProjectId, projects, user._id]);
+  }, [isOwner, selectedProjectId, projects, isProjectOwnedByCurrentUser]);
 
   useEffect(() => {
     fetchOwnerApps();
@@ -109,10 +141,6 @@ export default function TeamRequestsPage() {
       addToast('Error', e.message || 'Failed to withdraw application', 'error');
     }
   };
-
-  const ownerProjects = projects.filter(
-    (p) => p.owner?._id === user._id || p.owner === user._id
-  );
 
   return (
     <DashboardLayout title={isOwner ? 'Review Applications' : 'My Applications'}>
@@ -166,7 +194,7 @@ export default function TeamRequestsPage() {
             <Inbox className="w-3.5 h-3.5 text-indigo-400" />
             <span>Applications to Review</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500 text-black font-bold">
-              {ownerApplications.length}
+              {pendingReviewCount}
             </span>
           </button>
         ) : (

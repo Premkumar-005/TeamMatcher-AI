@@ -40,10 +40,21 @@ export default function DashboardPage() {
     fullMark: 100
   }));
 
-  // Filter projects created by this owner if owner
-  const ownerProjects = projects.filter(
-    (p) => p.owner?._id === user._id || p.owner === user._id
-  );
+  // Filter projects created by this owner using real ownerId and logged-in user id
+  const ownerProjects = projects.filter((project) => {
+    const projectOwnerId = (
+      (typeof project.ownerId === 'string' ? project.ownerId : null) ||
+      project.ownerId?._id ||
+      project.ownerId?.id ||
+      (typeof project.owner === 'string' ? project.owner : null) ||
+      project.owner?._id ||
+      project.owner?.id
+    )?.toString();
+
+    const loggedInUserId = (user?.id || user?._id)?.toString();
+
+    return Boolean(projectOwnerId && loggedInUserId && (project.ownerId === user?.id || projectOwnerId === loggedInUserId));
+  });
 
   return (
     <DashboardLayout title={isOwner ? 'Owner Dashboard' : 'Developer Overview'}>
@@ -112,7 +123,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Projects Created"
-            value={`${ownerProjects.length > 0 ? ownerProjects.length : projects.length}`}
+            value={`${ownerProjects.length}`}
             subtitle="Active project listings"
             icon={FolderGit2}
             onClick={() => navigate('/projects')}
@@ -191,7 +202,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {projects.slice(0, 4).map((project) => (
+            {(isOwner ? ownerProjects : projects).slice(0, 4).map((project) => (
               <ProjectCard
                 key={project.id}
                 project={project}

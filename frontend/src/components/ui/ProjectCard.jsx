@@ -16,9 +16,11 @@ export default function ProjectCard({ project, onSelect, userSkills = [] }) {
     requiredSkills = []
   } = project;
 
+  const projectId = project.id || project._id;
+
   const handleCardClick = () => {
     if (onSelect) onSelect(project);
-    navigate(`/projects/${id}`);
+    navigate(`/projects/${projectId}`);
   };
 
   return (

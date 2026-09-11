@@ -8,8 +8,49 @@ import api from '../services/api';
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
-  // Theme state
-  const [theme, setTheme] = useState('dark');
+  // Theme state with local persistence (default: dark)
+  const [theme, setThemeState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('team_matcher_theme');
+      return saved === 'light' ? 'light' : 'dark';
+    } catch (e) {
+      return 'dark';
+    }
+  });
+
+  const setTheme = useCallback((newTheme) => {
+    const targetTheme = newTheme === 'light' ? 'light' : 'dark';
+    setThemeState(targetTheme);
+    try {
+      localStorage.setItem('team_matcher_theme', targetTheme);
+    } catch (e) {}
+
+    if (targetTheme === 'light') {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
+      if (document.body) {
+        document.body.classList.add('light');
+        document.body.classList.remove('dark');
+      }
+    } else {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      document.documentElement.setAttribute('data-theme', 'dark');
+      if (document.body) {
+        document.body.classList.add('dark');
+        document.body.classList.remove('light');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    setTheme(theme);
+  }, [theme, setTheme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  }, [theme, setTheme]);
 
   // Authentication State
   const [token, setToken] = useState(() => localStorage.getItem('tm_token') || localStorage.getItem('token') || '');
@@ -51,10 +92,6 @@ export function AppProvider({ children }) {
 
   // Toast Stack
   const [toasts, setToasts] = useState([]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
 
   const addToast = (title, message, type = 'success') => {
     const id = Date.now() + Math.random();
@@ -104,18 +141,107 @@ export function AppProvider({ children }) {
     };
   };
 
+  // Helper to resolve real sender ID and name for chat messages
+  const formatChatMessage = useCallback((m, currentUserId, team) => {
+    const senderId = (
+      m.senderId?._id ||
+      m.senderId?.id ||
+      (typeof m.senderId === 'string' ? m.senderId : null) ||
+      m.sender?._id ||
+      m.sender?.id ||
+      (typeof m.sender === 'string' && m.sender.length === 24 ? m.sender : null)
+    )?.toString();
+
+    // 1. Try to resolve real name from populated sender object or senderId object
+    let realName = null;
+    if (m.sender && typeof m.sender === 'object' && m.sender.name) {
+      realName = m.sender.name;
+    } else if (m.senderId && typeof m.senderId === 'object' && m.senderId.name) {
+      realName = m.senderId.name;
+    } else if (m.senderName && m.senderName !== 'User') {
+      realName = m.senderName;
+    }
+
+    // 2. If not directly in sender, resolve from team owner or team members
+    if (!realName && senderId && team) {
+      const ownerId = (team.owner?._id || team.owner?.id || team.owner)?.toString();
+      if (ownerId && ownerId === senderId) {
+        realName = team.owner?.name;
+      }
+      if (!realName && Array.isArray(team.members)) {
+        const foundMem = team.members.find((mem) => {
+          const memId = (mem.user?._id || mem.user?.id || mem.user || mem._id || mem.id)?.toString();
+          return memId === senderId;
+        });
+        if (foundMem) {
+          realName = foundMem.user?.name || foundMem.name;
+        }
+      }
+    }
+
+    // 3. Fallback to current user if sender matches
+    if (!realName && senderId && currentUserId && senderId === currentUserId) {
+      realName = user?.name;
+    }
+
+    if (realName) {
+      realName = realName.replace(/\s*\(You\)$/i, '').trim();
+    } else if (typeof m.sender === 'string' && m.sender && m.sender !== 'User' && m.sender.length !== 24) {
+      realName = m.sender.replace(/\s*\(You\)$/i, '').trim();
+    } else {
+      realName = 'User';
+    }
+
+    const isMe = Boolean(
+      currentUserId &&
+      senderId &&
+      currentUserId.toString() === senderId.toString()
+    );
+
+    const displayName = isMe ? `${realName} (You)` : realName;
+
+    const timeFormatted =
+      m.time ||
+      (m.createdAt
+        ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+    return {
+      ...m,
+      id: m._id || m.id || `${senderId}-${m.createdAt || Date.now()}`,
+      sender: displayName,
+      senderId: senderId,
+      senderName: realName,
+      role: m.role || (m.sender?.role === 'OWNER' ? 'Project Owner' : (m.sender?.title || 'Team Member')),
+      time: timeFormatted,
+      text: m.text || ''
+    };
+  }, [user]);
+
   // Refresh data from backend
   const refreshBackendData = useCallback(async () => {
     try {
       // 1. Fetch Projects
       const projRes = await api.getProjects();
       if (projRes.success && Array.isArray(projRes.data)) {
-        const mapped = projRes.data.map((p) => ({
-          ...p,
-          id: p._id || p.id,
-          matchPercentage: p.matchPercentage !== undefined ? p.matchPercentage : 80,
-          requiredSkills: (p.requiredSkills || []).map((s) => (typeof s === 'string' ? s : s.name))
-        }));
+        const mapped = projRes.data.map((p) => {
+          const resolvedOwnerId = (
+            p.ownerId?._id ||
+            p.ownerId?.id ||
+            (typeof p.ownerId === 'string' ? p.ownerId : null) ||
+            p.owner?._id ||
+            p.owner?.id ||
+            (typeof p.owner === 'string' ? p.owner : null)
+          )?.toString();
+
+          return {
+            ...p,
+            id: p._id || p.id,
+            ownerId: resolvedOwnerId || p.ownerId || p.owner,
+            matchPercentage: p.matchPercentage !== undefined ? p.matchPercentage : 80,
+            requiredSkills: (p.requiredSkills || []).map((s) => (typeof s === 'string' ? s : s.name))
+          };
+        });
         setProjects(mapped);
         if (mapped.length > 0) {
           setSelectedProject((prev) => mapped.find((m) => m.id === (prev?.id || prev?._id)) || mapped[0]);
@@ -129,11 +255,20 @@ export function AppProvider({ children }) {
       if (teamsRes.success && Array.isArray(teamsRes.data)) {
         setTeams(teamsRes.data);
         if (teamsRes.data.length > 0) {
-          const firstTeam = teamsRes.data[0];
-          const ownerObj = firstTeam.owner;
+          const currentProjId = (selectedProject?._id || selectedProject?.id)?.toString();
+          const targetTeam = (currentProjId
+            ? teamsRes.data.find(
+                (t) =>
+                  (t.project?._id || t.project?.id || t.project)?.toString() ===
+                  currentProjId
+              )
+            : null) || teamsRes.data[0];
+
+          const ownerObj = targetTeam.owner;
           const ownerMember = ownerObj
             ? [{
                 id: ownerObj._id || ownerObj,
+                _id: ownerObj._id || ownerObj,
                 name: `${ownerObj.name || 'Owner'} (Owner)`,
                 role: 'Project Owner',
                 avatar: ownerObj.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
@@ -141,8 +276,9 @@ export function AppProvider({ children }) {
               }]
             : [];
 
-          const workerMembers = (firstTeam.members || []).map((m) => ({
+          const workerMembers = (targetTeam.members || []).map((m) => ({
             id: m.user?._id || m.user,
+            _id: m.user?._id || m.user,
             name: m.user?.name || 'Member',
             role: m.role || 'Specialist',
             avatar: m.user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
@@ -152,24 +288,23 @@ export function AppProvider({ children }) {
           const allMembers = [...ownerMember, ...workerMembers];
 
           setActiveTeam({
-            ...firstTeam,
-            id: firstTeam._id,
-            project: firstTeam.project?.title || firstTeam.name,
-            overallScore: firstTeam.skillCoverage?.percentage || 85,
-            coverage: firstTeam.skillCoverage?.percentage || 100,
-            successPrediction: Math.min(100, (firstTeam.skillCoverage?.percentage || 85) + 5),
-            members: allMembers
+            ...targetTeam,
+            id: targetTeam._id,
+            project: targetTeam.project?.title || targetTeam.name,
+            overallScore: targetTeam.skillCoverage?.percentage || 85,
+            coverage: targetTeam.skillCoverage?.percentage || 100,
+            successPrediction: Math.min(100, (targetTeam.skillCoverage?.percentage || 85) + 5),
+            members: allMembers,
+            workerMembers: workerMembers
           });
 
+          const currentUid = (user?._id || user?.id)?.toString();
           setWorkspaceData({
-            tasks: (firstTeam.tasks || []).map((t) => ({ ...t, id: t._id || t.id })),
-            messages: (firstTeam.messages || []).map((m) => ({
-              ...m,
-              id: m._id || m.id,
-              sender: m.sender?.name || 'User',
-              role: m.sender?.role || 'Team Member'
-            })),
-            files: (firstTeam.files || []).map((f) => ({ ...f, id: f._id || f.id }))
+            tasks: (targetTeam.tasks || []).map((t) => ({ ...t, id: t._id || t.id })),
+            messages: (targetTeam.messages || []).map((m) =>
+              formatChatMessage(m, currentUid, targetTeam)
+            ),
+            files: (targetTeam.files || []).map((f) => ({ ...f, id: f._id || f.id }))
           });
         } else {
           setActiveTeam(null);
@@ -181,14 +316,32 @@ export function AppProvider({ children }) {
       const notifsRes = await api.getNotifications();
       if (notifsRes.success && Array.isArray(notifsRes.data)) {
         setNotifications(
-          notifsRes.data.map((n) => ({
-            id: n._id,
-            title: n.title,
-            message: n.message,
-            read: n.isRead,
-            time: new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: n.type
-          }))
+          notifsRes.data.map((n) => {
+            // Map backend notification type to filter categories ('team', 'project', 'ai', 'system')
+            let category = 'system';
+            if (['APPLICATION_RECEIVED', 'APPLICATION_ACCEPTED', 'APPLICATION_REJECTED', 'PROJECT_CLOSED'].includes(n.type)) {
+              category = 'project';
+            } else if (['TASK_STARTED', 'TASK_COMPLETED', 'FILE_SHARED', 'TEAM_INVITATION', 'TEAM_JOINED'].includes(n.type)) {
+              category = 'team';
+            } else if (['AI_UPDATE', 'RESUME_PARSED'].includes(n.type)) {
+              category = 'ai';
+            }
+
+            return {
+              id: n._id || n.id,
+              _id: n._id || n.id,
+              title: n.title,
+              message: n.message,
+              read: n.isRead,
+              link: n.link || '',
+              rawType: n.type,
+              relatedProject: n.relatedProject,
+              relatedEntity: n.relatedEntity,
+              sender: n.sender,
+              type: category, // Matches existing UI filter IDs: 'all' | 'team' | 'project' | 'ai' | 'system'
+              time: new Date(n.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+          })
         );
       }
 
@@ -233,6 +386,58 @@ export function AppProvider({ children }) {
 
     verifyAuth();
   }, [refreshBackendData]);
+
+  // Keep activeTeam synced with selectedProject whenever selectedProject or teams list changes
+  useEffect(() => {
+    if (selectedProject && teams.length > 0) {
+      const projId = (selectedProject._id || selectedProject.id)?.toString();
+      const matchingTeam = teams.find(
+        (t) => (t.project?._id || t.project?.id || t.project)?.toString() === projId
+      );
+      if (matchingTeam) {
+        const ownerObj = matchingTeam.owner;
+        const ownerMember = ownerObj
+          ? [{
+              id: ownerObj._id || ownerObj,
+              _id: ownerObj._id || ownerObj,
+              name: `${ownerObj.name || 'Owner'} (Owner)`,
+              role: 'Project Owner',
+              avatar: ownerObj.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+              status: 'Owner'
+            }]
+          : [];
+
+        const workerMembers = (matchingTeam.members || []).map((m) => ({
+          id: m.user?._id || m.user,
+          _id: m.user?._id || m.user,
+          name: m.user?.name || 'Member',
+          role: m.role || 'Specialist',
+          avatar: m.user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+          status: 'Accepted'
+        }));
+
+        setActiveTeam({
+          ...matchingTeam,
+          id: matchingTeam._id,
+          project: matchingTeam.project?.title || matchingTeam.name,
+          overallScore: matchingTeam.skillCoverage?.percentage || 85,
+          coverage: matchingTeam.skillCoverage?.percentage || 100,
+          successPrediction: Math.min(100, (matchingTeam.skillCoverage?.percentage || 85) + 5),
+          members: [...ownerMember, ...workerMembers],
+          workerMembers: workerMembers
+        });
+
+        const currentUid = (user?._id || user?.id)?.toString();
+        setWorkspaceData({
+          tasks: (matchingTeam.tasks || []).map((t) => ({ ...t, id: t._id || t.id })),
+          messages: (matchingTeam.messages || []).map((m) =>
+            formatChatMessage(m, currentUid, matchingTeam)
+          ),
+          files: (matchingTeam.files || []).map((f) => ({ ...f, id: f._id || f.id }))
+        });
+      }
+    }
+  }, [selectedProject, teams, user, formatChatMessage]);
 
   // Login handler
   const loginUser = async (credentials) => {
@@ -424,6 +629,31 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Accept Team Invite (Worker)
+  const acceptTeamInviteAction = async (teamId, notificationId = null) => {
+    try {
+      const res = await api.acceptTeamInvite(teamId);
+      if (res.success) {
+        if (notificationId) {
+          try {
+            await api.markNotificationAsRead(notificationId);
+          } catch (e) {}
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+          );
+        }
+        addToast('Team Joined! 🎉', 'You have accepted the invitation and joined the team workspace.', 'success');
+        await refreshBackendData();
+        return { success: true, team: res.data?.team };
+      }
+      throw new Error(res.message || 'Failed to accept invitation');
+    } catch (error) {
+      const msg = error.response?.data?.message || error.message || 'Failed to accept team invitation.';
+      addToast('Action Failed', msg, 'error');
+      return { success: false, message: msg };
+    }
+  };
+
   // Upload Resume (Worker)
   const uploadWorkerResume = async (file) => {
     try {
@@ -467,44 +697,108 @@ export function AppProvider({ children }) {
   };
 
   // Workspace Actions
-  const addTask = async (title) => {
+  const addTask = async (title, assigneeId = null) => {
     if (!title.trim()) return;
-    const newTask = {
-      id: `t-${Date.now()}`,
-      title: title.trim(),
-      status: 'To Do',
-      assignee: user.name
-    };
-    setWorkspaceData((prev) => ({
-      ...prev,
-      tasks: [...prev.tasks, newTask]
-    }));
 
     if (activeTeam?._id) {
       try {
-        await api.createTeamTask(activeTeam._id, { title: title.trim(), status: 'To Do' });
+        const payload = { title: title.trim(), status: 'To Do' };
+        if (assigneeId) payload.assignee = assigneeId;
+        const res = await api.createTeamTask(activeTeam._id, payload);
+        if (res.success && res.data) {
+          const newTask = {
+            ...res.data,
+            id: res.data._id || res.data.id
+          };
+          setWorkspaceData((prev) => ({
+            ...prev,
+            tasks: [...prev.tasks, newTask]
+          }));
+          addToast('Task Created', `Added "${title}" to task board.`, 'success');
+          return { success: true, task: newTask };
+        }
       } catch (e) {
-        console.warn('Task saved locally:', e.message);
+        console.error('Error creating task:', e);
+        const msg = e.response?.data?.message || 'Failed to create task';
+        addToast('Task Creation Failed', msg, 'error');
+        return { success: false, message: msg };
       }
     }
-    addToast('Task Created', `Added "${title}" to task board.`, 'success');
   };
 
-  const moveTask = (id, newStatus) => {
+  const moveTask = async (taskId, newStatus, assigneeId) => {
+    if (!activeTeam?._id) return;
+
+    // Optimistically update local workspace state
     setWorkspaceData((prev) => ({
       ...prev,
-      tasks: prev.tasks.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
+      tasks: prev.tasks.map((t) => {
+        if (t.id === taskId || t._id === taskId) {
+          const updated = { ...t, status: newStatus };
+          if (assigneeId !== undefined) {
+            updated.assignee = assigneeId;
+          }
+          return updated;
+        }
+        return t;
+      })
     }));
+
+    try {
+      const payload = { status: newStatus };
+      if (assigneeId !== undefined) payload.assignee = assigneeId;
+      const res = await api.updateTeamTask(activeTeam._id, taskId, payload);
+      if (res.success && res.data) {
+        const updatedTask = { ...res.data, id: res.data._id || res.data.id };
+        setWorkspaceData((prev) => ({
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            (t.id === taskId || t._id === taskId) ? updatedTask : t
+          )
+        }));
+      }
+    } catch (e) {
+      console.error('Error updating task status:', e);
+      addToast('Task Update Failed', e.response?.data?.message || 'Failed to update task', 'error');
+      refreshBackendData();
+    }
+  };
+
+  const assignTask = async (taskId, assigneeId) => {
+    if (!activeTeam?._id) return;
+
+    try {
+      const payload = { assignee: assigneeId || null };
+      const res = await api.updateTeamTask(activeTeam._id, taskId, payload);
+      if (res.success && res.data) {
+        const updatedTask = { ...res.data, id: res.data._id || res.data.id };
+        setWorkspaceData((prev) => ({
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            (t.id === taskId || t._id === taskId) ? updatedTask : t
+          )
+        }));
+        addToast('Task Assigned', 'Task assigned successfully.', 'success');
+      }
+    } catch (e) {
+      console.error('Error assigning task:', e);
+      addToast('Assign Failed', e.response?.data?.message || 'Failed to assign task', 'error');
+    }
   };
 
   const addChatMessage = async (text) => {
     if (!text.trim()) return;
+    const currentUserId = (user?.id || user?._id)?.toString();
+    const tempId = `temp-${Date.now()}`;
+    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newMsg = {
-      id: Date.now(),
-      sender: `${user.name} (You)`,
+      id: tempId,
+      sender: `${user.name || 'User'} (You)`,
+      senderId: currentUserId,
+      senderName: user.name || 'User',
       role: user.role === 'OWNER' ? 'Project Owner' : (user.title || 'Team Member'),
       text: text.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: formattedTime
     };
     setWorkspaceData((prev) => ({
       ...prev,
@@ -513,25 +807,88 @@ export function AppProvider({ children }) {
 
     if (activeTeam?._id) {
       try {
-        await api.sendTeamMessage(activeTeam._id, text.trim());
+        const res = await api.sendTeamMessage(activeTeam._id, text.trim());
+        if (res.success && res.data) {
+          const serverMsg = res.data;
+          setWorkspaceData((prev) => ({
+            ...prev,
+            messages: prev.messages.map((m) =>
+              m.id === tempId
+                ? formatChatMessage(serverMsg, currentUserId, activeTeam)
+                : m
+            )
+          }));
+        }
       } catch (e) {
         console.warn('Message saved locally:', e.message);
       }
     }
   };
 
-  const uploadWorkspaceFile = (fileName, fileSize = '2.4 MB') => {
-    const newFile = {
-      name: fileName,
-      size: fileSize,
-      author: `${user.name} (You)`,
-      date: 'Just now'
-    };
-    setWorkspaceData((prev) => ({
-      ...prev,
-      files: [newFile, ...prev.files]
-    }));
-    addToast('File Shared', `Uploaded ${fileName} to team workspace.`, 'success');
+  const uploadWorkspaceFile = async (file) => {
+    if (!activeTeam?._id) {
+      addToast('No Team', 'No active team workspace found.', 'error');
+      return { success: false };
+    }
+    if (!file) {
+      addToast('No File', 'Please select a file to upload.', 'error');
+      return { success: false };
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.uploadTeamFile(activeTeam._id, formData);
+      if (res.success && res.data) {
+        const newFile = { ...res.data, id: res.data._id || res.data.id };
+        setWorkspaceData((prev) => ({
+          ...prev,
+          files: [newFile, ...prev.files]
+        }));
+        addToast('File Shared ✅', `"${res.data.name}" uploaded to team workspace.`, 'success');
+        return { success: true, file: newFile };
+      }
+      throw new Error(res.message || 'Upload failed');
+    } catch (e) {
+      const msg = e.response?.data?.message || e.message || 'File upload failed.';
+      addToast('Upload Failed', msg, 'error');
+      return { success: false, message: msg };
+    }
+  };
+
+  const downloadWorkspaceFile = async (fileId, fileName) => {
+    if (!activeTeam?._id) {
+      addToast('No Team', 'No active team workspace found.', 'error');
+      return { success: false };
+    }
+    try {
+      await api.downloadTeamFile(activeTeam._id, fileId, fileName);
+      return { success: true };
+    } catch (e) {
+      const msg = e.message || 'File download failed.';
+      addToast('Download Failed', msg, 'error');
+      return { success: false, message: msg };
+    }
+  };
+
+  // Delete Project (Owner only)
+  const deleteProject = async (projectId) => {
+    try {
+      const res = await api.deleteProject(projectId);
+      if (res.success) {
+        // Remove from both the global catalog and the owner's my-projects list
+        setProjects((prev) => prev.filter((p) => (p._id || p.id) !== projectId));
+        setMyProjects((prev) => prev.filter((p) => (p._id || p.id) !== projectId));
+        addToast('Project Deleted 🗑️', 'Project and all associated data have been removed.', 'success');
+        return { success: true };
+      }
+      throw new Error(res.message || 'Delete failed');
+    } catch (e) {
+      const msg = e.response?.data?.message || e.message || 'Failed to delete project.';
+      addToast('Delete Failed', msg, 'error');
+      return { success: false, message: msg };
+    }
   };
 
   return (
@@ -555,6 +912,7 @@ export function AppProvider({ children }) {
         applyToProjectAction,
         acceptWorkerApplication,
         rejectWorkerApplication,
+        acceptTeamInviteAction,
         uploadWorkerResume,
         projects,
         setProjects,
@@ -572,15 +930,21 @@ export function AppProvider({ children }) {
         workspaceData,
         addTask,
         moveTask,
+        assignTask,
         addChatMessage,
         uploadWorkspaceFile,
+        downloadWorkspaceFile,
+        deleteProject,
         notifications,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         refreshBackendData,
         toasts,
         addToast,
-        removeToast
+        removeToast,
+        theme,
+        setTheme,
+        toggleTheme
       }}
     >
       <div className={theme}>{children}</div>
