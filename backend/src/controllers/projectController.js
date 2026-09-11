@@ -1,4 +1,6 @@
 import { validationResult } from 'express-validator';
+import path from 'path';
+import fs from 'fs';
 import Project from '../models/Project.js';
 import ProjectApplication from '../models/ProjectApplication.js';
 import Team from '../models/Team.js';
@@ -59,6 +61,7 @@ export const createProject = async (req, res, next) => {
       title: title.trim(),
       description: description.trim(),
       owner: req.user._id,
+      ownerId: req.user._id,
       category: category ? category.trim() : 'General Software',
       requiredSkills: formattedRequiredSkills,
       preferredExperienceLevel: preferredExperienceLevel || 'Intermediate',
@@ -76,7 +79,10 @@ export const createProject = async (req, res, next) => {
     };
 
     const project = await Project.create(projectData);
-    await project.populate('owner', 'name email company avatar');
+    await project.populate([
+      { path: 'owner', select: 'name email company avatar' },
+      { path: 'ownerId', select: 'name email company avatar' }
+    ]);
 
     return res.status(201).json({
       success: true,
@@ -151,6 +157,7 @@ export const getProjects = async (req, res, next) => {
     const total = await Project.countDocuments(query);
     const projects = await Project.find(query)
       .populate('owner', 'name email company avatar')
+      .populate('ownerId', 'name email company avatar')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit));
@@ -190,10 +197,9 @@ export const getProjects = async (req, res, next) => {
  */
 export const getProjectById = async (req, res, next) => {
   try {
-    const project = await Project.findById(req.params.id).populate(
-      'owner',
-      'name email company bio avatar linkedin github'
-    );
+    const project = await Project.findById(req.params.id)
+      .populate('owner', 'name email company bio avatar linkedin github')
+      .populate('ownerId', 'name email company bio avatar linkedin github');
 
     if (!project) {
       return res.status(404).json({
@@ -203,6 +209,12 @@ export const getProjectById = async (req, res, next) => {
     }
 
     const projectObj = project.toObject();
+    if (!projectObj.ownerId && projectObj.owner) {
+      projectObj.ownerId = projectObj.owner;
+    }
+    if (!projectObj.owner && projectObj.ownerId) {
+      projectObj.owner = projectObj.ownerId;
+    }
 
     // Check if worker has already applied or if there is an existing team
     if (req.user && req.user.role === 'WORKER') {
@@ -300,7 +312,10 @@ export const updateProject = async (req, res, next) => {
     }
 
     const updatedProject = await project.save();
-    await updatedProject.populate('owner', 'name email company avatar');
+    await updatedProject.populate([
+      { path: 'owner', select: 'name email company avatar' },
+      { path: 'ownerId', select: 'name email company avatar' }
+    ]);
 
     return res.status(200).json({
       success: true,
@@ -337,14 +352,32 @@ export const deleteProject = async (req, res, next) => {
       });
     }
 
-    // Clean up applications and team related to project
+    // Find associated team(s) and delete their workspace files from disk
+    const teams = await Team.find({ project: project._id });
+    for (const team of teams) {
+      for (const file of team.files) {
+        if (file.url) {
+          const relativePath = file.url.replace(/^\//, '');
+          const absolutePath = path.resolve(relativePath);
+          try {
+            if (fs.existsSync(absolutePath)) {
+              fs.unlinkSync(absolutePath);
+            }
+          } catch (fileErr) {
+            console.warn(`Could not delete file ${absolutePath}:`, fileErr.message);
+          }
+        }
+      }
+    }
+
+    // Clean up all related data: applications, teams (with tasks, messages, files)
     await ProjectApplication.deleteMany({ project: project._id });
     await Team.deleteMany({ project: project._id });
     await project.deleteOne();
 
     return res.status(200).json({
       success: true,
-      message: 'Project and associated team data deleted successfully'
+      message: 'Project and all associated data deleted successfully'
     });
   } catch (error) {
     next(error);
@@ -409,8 +442,11 @@ export const updateProjectStatus = async (req, res, next) => {
 export const getMyProjects = async (req, res, next) => {
   try {
     if (req.user.role === 'OWNER') {
-      const projects = await Project.find({ owner: req.user._id })
+      const projects = await Project.find({
+        $or: [{ owner: req.user._id }, { ownerId: req.user._id }]
+      })
         .populate('owner', 'name email company avatar')
+        .populate('ownerId', 'name email company avatar')
         .sort({ createdAt: -1 });
 
       // Attach application counts and team status to each project
@@ -506,6 +542,7 @@ export const getRecommendedProjects = async (req, res, next) => {
   try {
     const openProjects = await Project.find({ status: 'OPEN' })
       .populate('owner', 'name email company avatar')
+      .populate('ownerId', 'name email company avatar')
       .limit(30);
 
     const workerSkills = req.user.skills || [];

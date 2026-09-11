@@ -7,7 +7,8 @@ import {
   getMessages,
   sendMessage,
   getFiles,
-  uploadFile
+  uploadFile,
+  downloadFile
 } from '../controllers/workspaceController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { uploadWorkspaceFile } from '../middleware/uploadMiddleware.js';
@@ -27,8 +28,9 @@ router.delete('/tasks/:taskId', deleteTask);
 router.get('/messages', getMessages);
 router.post('/messages', sendMessage);
 
-// Files
+// Files — upload requires a real file via multipart; download serves with Content-Disposition
 router.get('/files', getFiles);
 router.post('/files', uploadWorkspaceFile.single('file'), uploadFile);
+router.get('/files/:fileId/download', downloadFile);
 
 export default router;

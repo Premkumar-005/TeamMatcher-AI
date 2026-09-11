@@ -22,6 +22,10 @@ const teamMemberSchema = new mongoose.Schema(
 
 const taskSchema = new mongoose.Schema(
   {
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project'
+    },
     title: {
       type: String,
       required: [true, 'Task title is required'],
@@ -50,12 +54,9 @@ const taskSchema = new mongoose.Schema(
     dueDate: {
       type: Date,
       default: null
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now
     }
-  }
+  },
+  { timestamps: true }
 );
 
 const messageSchema = new mongoose.Schema(
@@ -64,6 +65,10 @@ const messageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true
+    },
+    senderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     },
     text: {
       type: String,
@@ -74,8 +79,19 @@ const messageSchema = new mongoose.Schema(
       type: Date,
       default: Date.now
     }
+  },
+  {
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
+
+messageSchema.pre('validate', function (next) {
+  if (!this.senderId && this.sender) {
+    this.senderId = this.sender;
+  }
+  next();
+});
 
 const fileSchema = new mongoose.Schema(
   {

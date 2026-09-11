@@ -1,6 +1,7 @@
 import { validationResult } from 'express-validator';
 import Team from '../models/Team.js';
 import Project from '../models/Project.js';
+import ProjectApplication from '../models/ProjectApplication.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import { calculateTeamSkillCoverage } from '../services/matchingService.js';
@@ -78,7 +79,45 @@ export const getMyTeams = async (req, res, next) => {
       .populate('project', 'title description category status requiredSkills duration durationUnit')
       .populate('owner', 'name email company avatar')
       .populate('members.user', 'name email title avatar skills experienceLevel')
+      .populate('tasks.assignee', 'name email avatar role title')
+      .populate('messages.sender', 'name email avatar role title')
+      .populate('messages.senderId', 'name email avatar role title')
       .sort({ updatedAt: -1 });
+
+    // Ensure team members strictly reflect the real database relationship:
+    // Project -> project.id -> Application.projectId -> Application.workerId -> User.id
+    // Only workers with an ACCEPTED application for this specific project are included in Team Roster
+    for (const team of teams) {
+      const projectId = team.project?._id || team.project;
+      if (projectId) {
+        const acceptedApps = await ProjectApplication.find({
+          project: projectId,
+          status: 'ACCEPTED'
+        }).select('worker');
+
+        const acceptedWorkerIdSet = new Set(
+          acceptedApps.map((a) => a.worker.toString())
+        );
+
+        const originalLength = team.members.length;
+        team.members = team.members.filter((m) => {
+          const workerId = (m.user?._id || m.user)?.toString();
+          return workerId && acceptedWorkerIdSet.has(workerId);
+        });
+
+        if (team.members.length !== originalLength) {
+          const validUserIds = team.members.map((m) => m.user?._id || m.user);
+          await Team.updateOne(
+            { _id: team._id },
+            {
+              $pull: {
+                members: { user: { $nin: validUserIds } }
+              }
+            }
+          );
+        }
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -102,7 +141,8 @@ export const getTeamById = async (req, res, next) => {
       .populate('owner', 'name email company avatar bio')
       .populate('members.user', 'name email title avatar skills experienceLevel github linkedin portfolio')
       .populate('tasks.assignee', 'name avatar')
-      .populate('messages.sender', 'name avatar role')
+      .populate('messages.sender', 'name email avatar role title')
+      .populate('messages.senderId', 'name email avatar role title')
       .populate('files.uploadedBy', 'name avatar');
 
     if (!team) {
@@ -110,6 +150,37 @@ export const getTeamById = async (req, res, next) => {
         success: false,
         message: 'Team not found'
       });
+    }
+
+    // Ensure team members strictly reflect real ACCEPTED applications for this project
+    const projectId = team.project?._id || team.project;
+    if (projectId) {
+      const acceptedApps = await ProjectApplication.find({
+        project: projectId,
+        status: 'ACCEPTED'
+      }).select('worker');
+
+      const acceptedWorkerIdSet = new Set(
+        acceptedApps.map((a) => a.worker.toString())
+      );
+
+      const originalLength = team.members.length;
+      team.members = team.members.filter((m) => {
+        const workerId = (m.user?._id || m.user)?.toString();
+        return workerId && acceptedWorkerIdSet.has(workerId);
+      });
+
+      if (team.members.length !== originalLength) {
+        const validUserIds = team.members.map((m) => m.user?._id || m.user);
+        await Team.updateOne(
+          { _id: team._id },
+          {
+            $pull: {
+              members: { user: { $nin: validUserIds } }
+            }
+          }
+        );
+      }
     }
 
     // Authorization check: User must be either Owner or Member
@@ -394,6 +465,91 @@ export const leaveTeam = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Worker accepts team invitation
+ * @route   PUT /api/teams/:id/accept-invite
+ * @access  Private (WORKER only)
+ */
+export const acceptTeamInvite = async (req, res, next) => {
+  try {
+    const team = await Team.findById(req.params.id).populate('project');
+    if (!team) {
+      return res.status(404).json({
+        success: false,
+        message: 'Team not found'
+      });
+    }
+
+    const projectId = team.project?._id || team.project;
+
+    // Strict Rule: Worker must have an ACCEPTED application for this project in MongoDB
+    const acceptedApp = await ProjectApplication.findOne({
+      project: projectId,
+      worker: req.user._id,
+      status: 'ACCEPTED'
+    });
+
+    if (!acceptedApp) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You must have an accepted application for this project to join the team'
+      });
+    }
+
+    // Add worker to team if not already present
+    const isMember = team.members.some(
+      (m) => m.user.toString() === req.user._id.toString()
+    );
+
+    if (!isMember) {
+      const assignedRole = req.user.title || 'Technical Specialist';
+      team.members.push({
+        user: req.user._id,
+        role: assignedRole,
+        joinedAt: new Date()
+      });
+
+      await team.populate('members.user', 'skills');
+      const projectSkills = team.project ? team.project.requiredSkills : [];
+      team.skillCoverage = calculateTeamSkillCoverage(team.members, projectSkills);
+      await team.save();
+    }
+
+    // Mark any unread team invitations for this project as read
+    await Notification.updateMany(
+      {
+        recipient: req.user._id,
+        relatedProject: projectId,
+        type: 'TEAM_INVITATION',
+        isRead: false
+      },
+      { $set: { isRead: true } }
+    );
+
+    // Notify project/team owner
+    await Notification.create({
+      recipient: team.owner,
+      sender: req.user._id,
+      type: 'TEAM_JOINED',
+      title: 'Team Member Joined',
+      message: `${req.user.name} accepted the invitation and joined ${team.name}.`,
+      relatedProject: projectId,
+      relatedEntity: team._id,
+      link: '/teams'
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'You have joined the team workspace successfully',
+      data: {
+        team
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   createTeam,
   getMyTeams,
@@ -402,5 +558,6 @@ export default {
   deleteTeam,
   updateMemberRole,
   removeTeamMember,
-  leaveTeam
+  leaveTeam,
+  acceptTeamInvite
 };
