@@ -165,12 +165,20 @@ const userSchema = new mongoose.Schema(
     },
     resumeStatus: {
       type: String,
-      enum: ['NOT_UPLOADED', 'UPLOADED', 'ANALYZING', 'ANALYZED'],
+      enum: ['NOT_UPLOADED', 'UPLOADED', 'ANALYZING', 'ANALYZED', 'ANALYSIS_FAILED'],
       default: 'NOT_UPLOADED'
+    },
+    resumeAnalysisError: {
+      type: String,
+      default: ''
     },
     resumeScore: {
       type: Number,
       default: 0
+    },
+    resumeRawText: {
+      type: String,
+      default: ''
     },
     profileCompletion: {
       type: Number,

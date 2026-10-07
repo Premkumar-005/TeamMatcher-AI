@@ -2,6 +2,12 @@ import http from 'http';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import mongoose from 'mongoose';
+import User from './src/models/User.js';
+import Project from './src/models/Project.js';
+import Team from './src/models/Team.js';
+import ProjectApplication from './src/models/ProjectApplication.js';
+import Notification from './src/models/Notification.js';
 
 dotenv.config();
 
@@ -39,11 +45,14 @@ const runAllTests = async () => {
   console.log('========================================================\n');
 
   let ownerToken = '';
+  let ownerId = '';
   let workerToken = '';
+  let workerId = '';
   let createdProjectId = '';
   let createdApplicationId = '';
   let createdTeamId = '';
   let worker2Token = '';
+  let worker2Id = '';
 
   // 1. Health Check
   console.log('1. Testing GET /api/health...');
@@ -100,6 +109,7 @@ const runAllTests = async () => {
   console.log(`   Status: ${ownerReg.status}, Role: ${ownerReg.data?.data?.user?.role}, Token received: ${!!ownerReg.data?.data?.token}`);
   if (ownerReg.status !== 201 || ownerReg.data?.data?.user?.role !== 'OWNER') throw new Error('Owner registration failed');
   ownerToken = ownerReg.data.data.token;
+  ownerId = ownerReg.data.data.user._id;
 
   // 4. Valid Registration (WORKER)
   console.log('\n4. Testing POST /api/auth/register (Valid WORKER)...');
@@ -130,6 +140,7 @@ const runAllTests = async () => {
   console.log(`   Status: ${workerReg.status}, Role: ${workerReg.data?.data?.user?.role}, Skills count: ${workerReg.data?.data?.user?.skills?.length}`);
   if (workerReg.status !== 201 || workerReg.data?.data?.user?.role !== 'WORKER') throw new Error('Worker registration failed');
   workerToken = workerReg.data.data.token;
+  workerId = workerReg.data.data.user._id;
 
   // Login a 2nd Worker for access control checks
   const worker2Email = `test.worker2.${uniqueId}@teammatcher.ai`;
@@ -150,6 +161,7 @@ const runAllTests = async () => {
     }
   );
   worker2Token = worker2Reg.data.data.token;
+  worker2Id = worker2Reg.data?.data?.user?._id;
 
   // 5. OWNER Creates a Project
   console.log('\n5. Testing POST /api/projects (OWNER creating project)...');
@@ -423,6 +435,30 @@ const runAllTests = async () => {
   console.log('\n========================================================');
   console.log('  ✨ ALL 20 COMPREHENSIVE BACKEND TESTS PASSED! ✨');
   console.log('========================================================\n');
+
+  // Automated Teardown: Clean up test accounts, projects, and notifications so DB stays clean
+  try {
+    console.log('Cleaning up test data from MongoDB...');
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/teammatcher');
+    if (createdProjectId) await Project.deleteOne({ _id: createdProjectId });
+    if (createdTeamId) await Team.deleteOne({ _id: createdTeamId });
+    if (ownerId) await User.deleteOne({ _id: ownerId });
+    if (workerId) await User.deleteOne({ _id: workerId });
+    if (worker2Id) await User.deleteOne({ _id: worker2Id });
+    if (createdApplicationId) await ProjectApplication.deleteOne({ _id: createdApplicationId });
+    await Notification.deleteMany({
+      $or: [
+        ...(createdProjectId ? [{ relatedProject: createdProjectId }] : []),
+        { recipient: { $in: [ownerId, workerId, worker2Id].filter(Boolean) } },
+        { sender: { $in: [ownerId, workerId, worker2Id].filter(Boolean) } }
+      ]
+    });
+    await mongoose.disconnect();
+    console.log('Test data cleaned up successfully.');
+  } catch (cleanErr) {
+    console.warn('Cleanup notice:', cleanErr.message);
+  }
+
   process.exit(0);
 };
 

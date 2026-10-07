@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import Team from '../models/Team.js';
 import Project from '../models/Project.js';
@@ -78,6 +79,7 @@ export const getMyTeams = async (req, res, next) => {
     })
       .populate('project', 'title description category status requiredSkills duration durationUnit')
       .populate('owner', 'name email company avatar')
+      .populate('leader', 'name email avatar role title')
       .populate('members.user', 'name email title avatar skills experienceLevel')
       .populate('tasks.assignee', 'name email avatar role title')
       .populate('messages.sender', 'name email avatar role title')
@@ -87,6 +89,7 @@ export const getMyTeams = async (req, res, next) => {
     // Ensure team members strictly reflect the real database relationship:
     // Project -> project.id -> Application.projectId -> Application.workerId -> User.id
     // Only workers with an ACCEPTED application for this specific project are included in Team Roster
+    const validTeams = [];
     for (const team of teams) {
       const projectId = team.project?._id || team.project;
       if (projectId) {
@@ -99,30 +102,27 @@ export const getMyTeams = async (req, res, next) => {
           acceptedApps.map((a) => a.worker.toString())
         );
 
-        const originalLength = team.members.length;
         team.members = team.members.filter((m) => {
           const workerId = (m.user?._id || m.user)?.toString();
           return workerId && acceptedWorkerIdSet.has(workerId);
         });
+      }
 
-        if (team.members.length !== originalLength) {
-          const validUserIds = team.members.map((m) => m.user?._id || m.user);
-          await Team.updateOne(
-            { _id: team._id },
-            {
-              $pull: {
-                members: { user: { $nin: validUserIds } }
-              }
-            }
-          );
-        }
+      // Check if authenticated user is the real owner or an accepted member of this specific project/team
+      const isOwner = (team.owner?._id || team.owner)?.toString() === req.user._id.toString();
+      const isAcceptedMember = (team.members || []).some(
+        (m) => (m.user?._id || m.user)?.toString() === req.user._id.toString()
+      );
+
+      if (isOwner || isAcceptedMember) {
+        validTeams.push(team);
       }
     }
 
     return res.status(200).json({
       success: true,
-      count: teams.length,
-      data: teams
+      count: validTeams.length,
+      data: validTeams
     });
   } catch (error) {
     next(error);
@@ -130,20 +130,36 @@ export const getMyTeams = async (req, res, next) => {
 };
 
 /**
- * @desc    Get single team details by ID
+ * @desc    Get single team details by ID or Project ID
  * @route   GET /api/teams/:id
  * @access  Private (Owner or Team Member only)
  */
 export const getTeamById = async (req, res, next) => {
   try {
-    const team = await Team.findById(req.params.id)
-      .populate('project')
-      .populate('owner', 'name email company avatar bio')
-      .populate('members.user', 'name email title avatar skills experienceLevel github linkedin portfolio')
-      .populate('tasks.assignee', 'name avatar')
-      .populate('messages.sender', 'name email avatar role title')
-      .populate('messages.senderId', 'name email avatar role title')
-      .populate('files.uploadedBy', 'name avatar');
+    let team = null;
+    if (mongoose.isValidObjectId(req.params.id)) {
+      team = await Team.findById(req.params.id)
+        .populate('project')
+        .populate('owner', 'name email company avatar bio')
+        .populate('leader', 'name email avatar role title')
+        .populate('members.user', 'name email title avatar skills experienceLevel github linkedin portfolio')
+        .populate('tasks.assignee', 'name email avatar role title')
+        .populate('messages.sender', 'name email avatar role title')
+        .populate('messages.senderId', 'name email avatar role title')
+        .populate('files.uploadedBy', 'name avatar');
+
+      if (!team) {
+        team = await Team.findOne({ project: req.params.id })
+          .populate('project')
+          .populate('owner', 'name email company avatar bio')
+          .populate('leader', 'name email avatar role title')
+          .populate('members.user', 'name email title avatar skills experienceLevel github linkedin portfolio')
+          .populate('tasks.assignee', 'name email avatar role title')
+          .populate('messages.sender', 'name email avatar role title')
+          .populate('messages.senderId', 'name email avatar role title')
+          .populate('files.uploadedBy', 'name avatar');
+      }
+    }
 
     if (!team) {
       return res.status(404).json({
@@ -164,29 +180,16 @@ export const getTeamById = async (req, res, next) => {
         acceptedApps.map((a) => a.worker.toString())
       );
 
-      const originalLength = team.members.length;
       team.members = team.members.filter((m) => {
         const workerId = (m.user?._id || m.user)?.toString();
         return workerId && acceptedWorkerIdSet.has(workerId);
       });
-
-      if (team.members.length !== originalLength) {
-        const validUserIds = team.members.map((m) => m.user?._id || m.user);
-        await Team.updateOne(
-          { _id: team._id },
-          {
-            $pull: {
-              members: { user: { $nin: validUserIds } }
-            }
-          }
-        );
-      }
     }
 
     // Authorization check: User must be either Owner or Member
-    const isOwner = team.owner._id.toString() === req.user._id.toString();
+    const isOwner = (team.owner?._id || team.owner)?.toString() === req.user._id.toString();
     const isMember = team.members.some(
-      (m) => m.user && m.user._id.toString() === req.user._id.toString()
+      (m) => (m.user?._id || m.user)?.toString() === req.user._id.toString()
     );
 
     if (!isOwner && !isMember) {
@@ -550,6 +553,123 @@ export const acceptTeamInvite = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Assign or change the Team Leader for a team
+ * @route   PUT /api/teams/:id/leader
+ * @access  Private (Team OWNER only)
+ */
+export const assignTeamLeader = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { leaderId } = req.body;
+
+    if (!leaderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Leader user ID is required'
+      });
+    }
+
+    const team = await Team.findById(id).populate('project');
+    if (!team) {
+      return res.status(404).json({
+        success: false,
+        message: 'Team not found'
+      });
+    }
+
+    // Authorization: only the project/team owner can assign the leader
+    if (team.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: Only the project owner can assign the Team Leader'
+      });
+    }
+
+    const projectId = team.project?._id || team.project;
+
+    // Strict Rule: Must be an ACCEPTED worker for this project in MongoDB
+    const acceptedApp = await ProjectApplication.findOne({
+      project: projectId,
+      worker: leaderId,
+      status: 'ACCEPTED'
+    });
+
+    if (!acceptedApp) {
+      return res.status(400).json({
+        success: false,
+        message: 'The selected user must be an accepted worker on this project'
+      });
+    }
+
+    // Update team leader reference
+    team.leader = leaderId;
+
+    // Update member roles: promote new leader to 'Team Leader', demote old leader
+    let memberFound = false;
+    for (const member of team.members) {
+      const mUserId = (member.user?._id || member.user)?.toString();
+      if (mUserId === leaderId.toString()) {
+        member.role = 'Team Leader';
+        memberFound = true;
+      } else if (member.role === 'Team Leader') {
+        member.role = 'Team Member';
+      }
+    }
+
+    // If member not in team.members yet, add them as Team Leader
+    if (!memberFound) {
+      team.members.push({
+        user: leaderId,
+        role: 'Team Leader',
+        joinedAt: new Date()
+      });
+    }
+
+    await team.save();
+
+    // Send real notification to the new Team Leader
+    try {
+      let projectTitle = team.name;
+      if (team.project?.title) {
+        projectTitle = team.project.title;
+      } else if (projectId) {
+        const pDoc = await Project.findById(projectId).select('title');
+        if (pDoc?.title) projectTitle = pDoc.title;
+      }
+
+      await Notification.create({
+        recipient: leaderId,
+        sender: req.user._id,
+        type: 'TEAM_LEADER_ASSIGNED',
+        title: 'Assigned as Team Leader',
+        message: `You have been assigned as the Team Leader for "${projectTitle}" by the project owner.`,
+        relatedProject: projectId,
+        relatedEntity: team._id,
+        link: '/team-workspace?tab=tasks'
+      });
+    } catch (notifErr) {
+      console.error('Error creating TEAM_LEADER_ASSIGNED notification:', notifErr);
+    }
+
+    // Populate updated team for response
+    await team.populate('owner', 'name email company avatar bio');
+    await team.populate('leader', 'name email avatar role title');
+    await team.populate('members.user', 'name email title avatar skills experienceLevel github linkedin portfolio');
+    await team.populate('tasks.assignee', 'name email avatar role title');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Team Leader assigned successfully',
+      data: {
+        team
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   createTeam,
   getMyTeams,
@@ -559,5 +679,6 @@ export default {
   updateMemberRole,
   removeTeamMember,
   leaveTeam,
-  acceptTeamInvite
+  acceptTeamInvite,
+  assignTeamLeader
 };

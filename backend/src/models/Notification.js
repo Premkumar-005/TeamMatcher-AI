@@ -18,6 +18,8 @@ const notificationSchema = new mongoose.Schema(
         'APPLICATION_RECEIVED',
         'APPLICATION_ACCEPTED',
         'APPLICATION_REJECTED',
+        'TEAM_LEADER_ASSIGNED',
+        'TASK_ASSIGNED',
         'TASK_STARTED',
         'TASK_COMPLETED',
         'FILE_SHARED',
