@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Search, Bell, Check, Menu } from 'lucide-react';
+import { Search, Bell, Check, Menu, Sun, Moon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function TopBar({ title = 'Dashboard', onToggleMobileMenu = null }) {
-  const { notifications, markAllNotificationsAsRead, user } = useApp();
+  const { notifications, markAllNotificationsAsRead, user, theme, toggleTheme } = useApp();
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -53,6 +53,20 @@ export default function TopBar({ title = 'Dashboard', onToggleMobileMenu = null 
 
       {/* Right Controls */}
       <div className="flex items-center gap-2.5">
+        {/* Theme Switcher Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-1.5 rounded-lg border border-[#222226] bg-[#0B0B0B] text-[#9CA3AF] hover:text-white hover:border-[#333338] transition-colors cursor-pointer"
+          title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+          aria-label="Toggle visual theme"
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Moon className="w-4 h-4 text-indigo-600" />
+          )}
+        </button>
+
         {/* Notifications Dropdown */}
         <div className="relative">
           <button

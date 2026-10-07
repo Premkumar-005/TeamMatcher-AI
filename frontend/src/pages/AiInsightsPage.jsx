@@ -1,35 +1,49 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, TrendingUp, AlertCircle, CheckCircle2, ArrowRight, Award } from 'lucide-react';
+import { useApp } from '../context/AppContext';
 import DashboardLayout from '../components/common/DashboardLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 
 export default function AiInsightsPage() {
   const navigate = useNavigate();
+  const { user, projects = [] } = useApp();
+
+  const userSkillNames = (user.skills || [])
+    .map((s) => (typeof s === 'string' ? s : s.name))
+    .filter(Boolean);
+  const primarySkillsStr = userSkillNames.slice(0, 3).join(', ') || 'General Technical Competencies';
+
+  const profileScore = user.profileCompletion !== undefined ? user.profileCompletion : 0;
+  const projectCount = projects.length;
 
   const insights = [
     {
-      title: 'Strong Backend & Full Stack Foundation',
-      desc: 'Your Java, React, and Node.js proficiency ranks in the top 10% of candidates.',
-      priority: 'Strength',
+      title: 'Technical Foundation',
+      desc: userSkillNames.length > 0
+        ? `Your verified skills in ${primarySkillsStr} provide a solid foundation for matching project sprint teams.`
+        : 'Add your technical skills or upload a resume to generate specialized stack diagnostics.',
+      priority: 'Profile Stack',
       badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
       icon: CheckCircle2,
       action: 'View Skill Breakdown',
       link: '/skill-proficiency'
     },
     {
-      title: 'Missing Gap Skill: Machine Learning',
-      desc: 'Acquiring PyTorch or TensorFlow skills will increase your match score for 4 target AI projects.',
-      priority: 'High Priority',
+      title: 'Skill Gap Diagnostics',
+      desc: 'Evaluate active project requirements against your real competencies to identify exact missing tech gaps.',
+      priority: 'Diagnostic',
       badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/25',
       icon: AlertCircle,
-      action: 'View Learning Path',
+      action: 'View Skill Gaps',
       link: '/skill-gap'
     },
     {
-      title: 'Candidate Profile Strength: 92%',
-      desc: 'Your profile has verified certifications and skills. Add a portfolio link to reach 100%.',
+      title: `Candidate Profile Strength: ${profileScore}%`,
+      desc: profileScore >= 100
+        ? 'Your profile is fully complete and optimized for team matching algorithms.'
+        : `Your profile completion is currently at ${profileScore}%. Update remaining profile details to reach 100%.`,
       priority: 'Profile Readiness',
       badgeColor: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
       icon: Award,
@@ -37,8 +51,8 @@ export default function AiInsightsPage() {
       link: '/profile'
     },
     {
-      title: 'Eligible for 4 Target Projects',
-      desc: 'Your extracted skill set matches requirements across 4 active catalog projects.',
+      title: `Project Opportunities: ${projectCount} Available`,
+      desc: `Browse ${projectCount} live project listings in the catalog to check compatibility scores and apply.`,
       priority: 'Opportunity',
       badgeColor: 'bg-[#141414] text-[#D4D4D8] border-[#222226]',
       icon: TrendingUp,

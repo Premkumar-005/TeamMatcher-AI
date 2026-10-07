@@ -157,7 +157,7 @@ export default function ProjectDetailsPage() {
     ? matchData.matchPercentage
     : projectSkillNames.length > 0
     ? Math.round((availableSkills.length / projectSkillNames.length) * 100)
-    : 80;
+    : 0;
 
   const handleApplySubmit = async (e) => {
     e.preventDefault();

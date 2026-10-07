@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Menu, X, Users2 } from 'lucide-react';
+import { ArrowRight, Menu, X, Users2, Sun, Moon } from 'lucide-react';
 import Button from '../ui/Button';
+import { useApp } from '../../context/AppContext';
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useApp();
 
   const isAuthOrApp = location.pathname.startsWith('/dashboard') || 
                       location.pathname.startsWith('/login') || 
@@ -36,6 +38,20 @@ export default function Navbar() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3">
+          {/* Theme Switcher Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 rounded-lg border border-[#222226] bg-[#0B0B0B] text-[#9CA3AF] hover:text-white hover:border-[#333338] transition-colors cursor-pointer"
+            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            aria-label="Toggle visual theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-indigo-600" />
+            )}
+          </button>
+
           {!isAuthOrApp ? (
             <>
               <Link

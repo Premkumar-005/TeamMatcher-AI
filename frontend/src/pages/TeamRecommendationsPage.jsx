@@ -6,23 +6,29 @@ import TeammateCard from '../components/ui/TeammateCard';
 import EmptyState from '../components/ui/EmptyState';
 
 export default function TeamRecommendationsPage() {
-  const { candidates, sentRequests, sendTeammateRequest, selectedProject } = useApp();
+  const { candidates = [], sentRequests = [], sendTeammateRequest, selectedProject } = useApp();
 
-  const [minCompatibility, setMinCompatibility] = useState(80);
+  const [minCompatibility, setMinCompatibility] = useState(0);
   const [selectedRole, setSelectedRole] = useState('All');
   const [sortBy, setSortBy] = useState('compatibility');
 
-  const roleOptions = ['All', 'AI / ML Engineer', 'Backend Specialist', 'Full Stack & Database Lead', 'UI/UX & Product Designer'];
+  // Derive roles dynamically from real MongoDB candidates
+  const roleOptions = ['All', ...Array.from(new Set(candidates.map((c) => c.role).filter(Boolean)))];
+
+  const projectTitle = selectedProject?.name || selectedProject?.title || 'Open Projects';
 
   const filteredCandidates = candidates
     .filter((c) => {
-      const matchScore = c.compatibility >= minCompatibility;
+      const compScore = c.compatibility !== undefined ? c.compatibility : 0;
+      const matchScore = compScore >= minCompatibility;
       const matchRole = selectedRole === 'All' || c.role === selectedRole;
       return matchScore && matchRole;
     })
     .sort((a, b) => {
-      if (sortBy === 'compatibility') return b.compatibility - a.compatibility;
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      const compA = a.compatibility !== undefined ? a.compatibility : 0;
+      const compB = b.compatibility !== undefined ? b.compatibility : 0;
+      if (sortBy === 'compatibility') return compB - compA;
+      if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
       return 0;
     });
 
@@ -33,14 +39,14 @@ export default function TeamRecommendationsPage() {
         <div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-xs font-medium mb-1">
             <Sparkles className="w-3 h-3 text-indigo-400" />
-            <span>Vector Synergy Matching</span>
+            <span>Real Worker Synergy</span>
           </span>
           <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
             Recommended Teammates
           </h2>
           <p className="text-xs text-[#9CA3AF]">
-            Matched to fill project skill gaps for{' '}
-            <span className="text-indigo-400 font-medium">{selectedProject ? selectedProject.title : 'AI Attendance System'}</span>
+            Matched candidates for{' '}
+            <span className="text-indigo-400 font-medium">{projectTitle}</span>
           </p>
         </div>
 
@@ -58,7 +64,7 @@ export default function TeamRecommendationsPage() {
             <select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              className="px-2.5 py-1.5 saas-input text-xs"
+              className="px-2.5 py-1.5 saas-input text-xs bg-[#0B0B0B] text-white border border-[#27272A] rounded-lg"
             >
               {roleOptions.map((r) => (
                 <option key={r} value={r} className="bg-[#0B0B0B]">
@@ -73,11 +79,12 @@ export default function TeamRecommendationsPage() {
             <select
               value={minCompatibility}
               onChange={(e) => setMinCompatibility(Number(e.target.value))}
-              className="px-2.5 py-1.5 saas-input text-xs"
+              className="px-2.5 py-1.5 saas-input text-xs bg-[#0B0B0B] text-white border border-[#27272A] rounded-lg"
             >
+              <option value={0} className="bg-[#0B0B0B]">All Candidates</option>
+              <option value={50} className="bg-[#0B0B0B]">50% +</option>
               <option value={70} className="bg-[#0B0B0B]">70% +</option>
               <option value={80} className="bg-[#0B0B0B]">80% +</option>
-              <option value={90} className="bg-[#0B0B0B]">90% + (Top Fits)</option>
             </select>
           </div>
         </div>
@@ -88,7 +95,7 @@ export default function TeamRecommendationsPage() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="px-2.5 py-1.5 saas-input text-xs"
+            className="px-2.5 py-1.5 saas-input text-xs bg-[#0B0B0B] text-white border border-[#27272A] rounded-lg"
           >
             <option value="compatibility" className="bg-[#0B0B0B]">Compatibility Score</option>
             <option value="name" className="bg-[#0B0B0B]">Candidate Name</option>
@@ -100,10 +107,11 @@ export default function TeamRecommendationsPage() {
       {filteredCandidates.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {filteredCandidates.map((candidate) => {
-            const isRequested = sentRequests.some((r) => r.candidateId === candidate.id);
+            const candId = candidate.id || candidate._id;
+            const isRequested = sentRequests.some((r) => r.candidateId === candId);
             return (
               <TeammateCard
-                key={candidate.id}
+                key={candId}
                 candidate={candidate}
                 onSendRequest={sendTeammateRequest}
                 isRequested={isRequested}
@@ -114,11 +122,11 @@ export default function TeamRecommendationsPage() {
       ) : (
         <EmptyState
           icon={UserCheck}
-          title="No Matching Candidates Found"
-          description="No candidates match your current compatibility threshold or role filter."
+          title="0 Matched Candidates"
+          description="There are currently no real worker accounts matching the criteria in MongoDB."
           actionLabel="Reset Filters"
           onAction={() => {
-            setMinCompatibility(70);
+            setMinCompatibility(0);
             setSelectedRole('All');
           }}
         />
