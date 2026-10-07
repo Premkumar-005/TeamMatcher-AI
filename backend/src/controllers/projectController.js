@@ -5,7 +5,7 @@ import Project from '../models/Project.js';
 import ProjectApplication from '../models/ProjectApplication.js';
 import Team from '../models/Team.js';
 import User from '../models/User.js';
-import { calculateProjectMatch, rankProjectsForWorker } from '../services/matchingService.js';
+import { calculateProjectMatch, rankProjectsForWorker, getEffectiveWorkerSkills } from '../services/matchingService.js';
 
 /**
  * @desc    Create a new project
@@ -165,7 +165,7 @@ export const getProjects = async (req, res, next) => {
     // If logged in as WORKER, attach deterministic match metrics to each project
     let resultData = projects;
     if (req.user && req.user.role === 'WORKER') {
-      const workerSkills = req.user.skills || [];
+      const workerSkills = getEffectiveWorkerSkills(req.user);
       resultData = projects.map((p) => {
         const pObj = p.toObject();
         const match = calculateProjectMatch(workerSkills, pObj.requiredSkills);
@@ -521,7 +521,7 @@ export const getProjectMatch = async (req, res, next) => {
       });
     }
 
-    const workerSkills = req.user.skills || [];
+    const workerSkills = getEffectiveWorkerSkills(req.user);
     const match = calculateProjectMatch(workerSkills, project.requiredSkills);
 
     return res.status(200).json({
@@ -545,7 +545,7 @@ export const getRecommendedProjects = async (req, res, next) => {
       .populate('ownerId', 'name email company avatar')
       .limit(30);
 
-    const workerSkills = req.user.skills || [];
+    const workerSkills = getEffectiveWorkerSkills(req.user);
     const ranked = rankProjectsForWorker(workerSkills, openProjects);
 
     return res.status(200).json({

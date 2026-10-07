@@ -5,6 +5,7 @@ import User from './src/models/User.js';
 import Project from './src/models/Project.js';
 import ProjectApplication from './src/models/ProjectApplication.js';
 import Team from './src/models/Team.js';
+import Notification from './src/models/Notification.js';
 
 dotenv.config();
 
@@ -341,6 +342,23 @@ const runKanbanE2ETest = async () => {
 
   if (dbTask.status !== 'Done') throw new Error('Database direct inspection failed: status is not Done');
   if (!dbTask.createdAt || !dbTask.updatedAt) throw new Error('Database direct inspection failed: timestamps missing');
+
+  // Automated Teardown: Clean up test accounts, projects, and notifications so DB stays clean
+  console.log('\nCleaning up Kanban test data from MongoDB...');
+  if (projectId) await Project.deleteOne({ _id: projectId });
+  if (teamId) await Team.deleteOne({ _id: teamId });
+  if (ownerId) await User.deleteOne({ _id: ownerId });
+  if (workerId) await User.deleteOne({ _id: workerId });
+  if (outsiderId) await User.deleteOne({ _id: outsiderId });
+  if (projectId) await ProjectApplication.deleteMany({ project: projectId });
+  await Notification.deleteMany({
+    $or: [
+      { relatedProject: projectId },
+      { recipient: { $in: [ownerId, workerId, outsiderId].filter(Boolean) } },
+      { sender: { $in: [ownerId, workerId, outsiderId].filter(Boolean) } }
+    ]
+  });
+  console.log('   Kanban test data cleaned up successfully.');
 
   await mongoose.disconnect();
 

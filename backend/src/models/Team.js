@@ -137,6 +137,11 @@ const teamSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'Team owner is required']
     },
+    leader: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
     members: {
       type: [teamMemberSchema],
       default: []
@@ -179,6 +184,7 @@ const teamSchema = new mongoose.Schema(
 // Indexes for fast lookup
 teamSchema.index({ project: 1 });
 teamSchema.index({ owner: 1 });
+teamSchema.index({ leader: 1 });
 teamSchema.index({ 'members.user': 1 });
 
 const Team = mongoose.model('Team', teamSchema);

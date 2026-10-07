@@ -14,6 +14,7 @@ import User from './src/models/User.js';
 import Project from './src/models/Project.js';
 import ProjectApplication from './src/models/ProjectApplication.js';
 import Team from './src/models/Team.js';
+import Notification from './src/models/Notification.js';
 
 dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -109,7 +110,7 @@ const ts = () => Math.random().toString(36).slice(2, 8);
 
   await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
 
-  let ownerToken, workerToken, projectId, teamId, fileId;
+  let ownerToken, workerToken, projectId, teamId, fileId, ownerId, workerId;
   let testFilePath;
 
   try {
@@ -120,7 +121,7 @@ const ts = () => Math.random().toString(36).slice(2, 8);
       password: 'Test1234!', role: 'OWNER', company: 'FileTestCorp'
     });
     ownerToken = ownerRes.data.data?.token;
-    const ownerId = ownerRes.data.data?.user?._id;
+    ownerId = ownerRes.data.data?.user?._id;
     if (!ownerToken) fail('Owner registration failed: ' + JSON.stringify(ownerRes.data));
     pass(`Owner registered: ID ${ownerId}`);
 
@@ -131,7 +132,7 @@ const ts = () => Math.random().toString(36).slice(2, 8);
       password: 'Test1234!', role: 'WORKER'
     });
     workerToken = workerRes.data.data?.token;
-    const workerId = workerRes.data.data?.user?._id;
+    workerId = workerRes.data.data?.user?._id;
     if (!workerToken) fail('Worker registration failed');
     pass(`Worker registered: ID ${workerId}`);
 
@@ -249,6 +250,17 @@ const ts = () => Math.random().toString(36).slice(2, 8);
     try { if (testFilePath) fs.unlinkSync(testFilePath); } catch (_) {}
     fail(`Unexpected error: ${err.message}\n${err.stack}`);
   } finally {
+    try {
+      if (ownerId) await User.deleteOne({ _id: ownerId });
+      if (workerId) await User.deleteOne({ _id: workerId });
+      await Notification.deleteMany({
+        $or: [
+          ...(projectId ? [{ relatedProject: projectId }] : []),
+          { recipient: { $in: [ownerId, workerId].filter(Boolean) } },
+          { sender: { $in: [ownerId, workerId].filter(Boolean) } }
+        ]
+      });
+    } catch (_) {}
     await mongoose.disconnect();
   }
 })();

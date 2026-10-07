@@ -9,7 +9,8 @@ import {
   updateMemberRole,
   removeTeamMember,
   leaveTeam,
-  acceptTeamInvite
+  acceptTeamInvite,
+  assignTeamLeader
 } from '../controllers/teamController.js';
 import workspaceRoutes from './workspaceRoutes.js';
 import { protect } from '../middleware/authMiddleware.js';
@@ -41,6 +42,7 @@ router.get('/:id', getTeamById);
 // Team Management (OWNER ONLY)
 router.put('/:id', requireRole('OWNER'), updateTeam);
 router.delete('/:id', requireRole('OWNER'), deleteTeam);
+router.put('/:id/leader', requireRole('OWNER'), assignTeamLeader);
 router.put('/:id/members/:userId/role', requireRole('OWNER'), updateMemberRole);
 router.delete('/:id/members/:userId', requireRole('OWNER'), removeTeamMember);
 
