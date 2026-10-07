@@ -65,8 +65,8 @@ export default function LandingPage() {
     },
     {
       icon: Briefcase,
-      title: 'Team Workspace & Kanban',
-      desc: 'Integrated collaboration tools including sprint Kanban boards, instant team chat, and shared project documents.'
+      title: 'Team Workspace & Tasks',
+      desc: 'Integrated collaboration tools including sprint task boards, instant team chat, and shared project documents.'
     }
   ];
 

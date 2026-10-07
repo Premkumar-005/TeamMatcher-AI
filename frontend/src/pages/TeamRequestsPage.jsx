@@ -287,7 +287,10 @@ export default function TeamRequestsPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => navigate('/team-workspace')}
+                        onClick={() => {
+                          const targetProjectId = app.project?._id || app.project?.id || app.project || app.projectId || selectedProjectId;
+                          navigate(`/team-workspace?projectId=${targetProjectId}`);
+                        }}
                         icon={Briefcase}
                       >
                         Open Team Workspace
@@ -324,7 +327,7 @@ export default function TeamRequestsPage() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-sm font-semibold text-white">
-                        {app.project?.title || 'Project Application'}
+                        {app.project?.name || app.project?.title || 'Project Application'}
                       </h3>
                       <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded ${
                         app.status === 'ACCEPTED'
@@ -355,7 +358,10 @@ export default function TeamRequestsPage() {
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => navigate('/team-workspace')}
+                        onClick={() => {
+                          const targetProjectId = app.project?._id || app.project?.id || app.project || app.projectId;
+                          navigate(`/team-workspace?projectId=${targetProjectId}`);
+                        }}
                         icon={Briefcase}
                       >
                         Enter Workspace

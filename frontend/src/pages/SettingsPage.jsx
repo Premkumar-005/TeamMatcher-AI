@@ -173,7 +173,7 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#0E0E10] border border-[#1C1C1F]">
             <div>
               <h4 className="font-medium text-white">Workspace Task Assignments</h4>
-              <p className="text-[#71717A] mt-0.5">Alert when team members assign Kanban tasks or upload shared files.</p>
+              <p className="text-[#71717A] mt-0.5">Alert when team members assign tasks or upload shared files.</p>
             </div>
             <input
               type="checkbox"

@@ -1,9 +1,47 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { currentUser as fallbackUser, mockCandidates } from '../data/users';
-import { mockProjects } from '../data/projects';
-import { initialActiveTeam, initialWorkspaceData } from '../data/teams';
-import { initialNotifications } from '../data/notifications';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
+
+/**
+ * Deterministic real matching helper for frontend
+ */
+export const calculateWorkerProjectMatch = (workerSkills = [], projectRequiredSkills = []) => {
+  if (!projectRequiredSkills || projectRequiredSkills.length === 0) {
+    return { matchPercentage: 0, matchingSkills: [], missingSkills: [] };
+  }
+
+  const workerMap = new Map();
+  (workerSkills || []).forEach((s) => {
+    const name = typeof s === 'string' ? s : s?.name;
+    const prof = typeof s === 'object' && s?.proficiency !== undefined ? s.proficiency : (s?.level || 80);
+    if (name) workerMap.set(name.trim().toLowerCase(), Number(prof) || 80);
+  });
+
+  const matchingSkills = [];
+  const missingSkills = [];
+  let totalScore = 0;
+
+  projectRequiredSkills.forEach((req) => {
+    const reqName = typeof req === 'string' ? req : req?.name;
+    const reqLevel = (typeof req === 'object' && req?.requiredLevel !== undefined) ? Number(req.requiredLevel) : 70;
+    const norm = reqName ? reqName.trim().toLowerCase() : '';
+
+    if (norm && workerMap.has(norm)) {
+      const prof = workerMap.get(norm);
+      const ratio = Math.min(1.2, prof / Math.max(reqLevel, 1));
+      totalScore += Math.min(100, Math.round(ratio * 100));
+      matchingSkills.push(reqName);
+    } else if (reqName) {
+      missingSkills.push(reqName);
+    }
+  });
+
+  if (matchingSkills.length === 0) {
+    return { matchPercentage: 0, matchingSkills, missingSkills };
+  }
+
+  const matchPercentage = Math.min(100, Math.round(totalScore / projectRequiredSkills.length));
+  return { matchPercentage, matchingSkills, missingSkills };
+};
 
 const AppContext = createContext();
 
@@ -90,6 +128,22 @@ export function AppProvider({ children }) {
   // System Notifications
   const [notifications, setNotifications] = useState([]);
 
+  // Stable refs to prevent infinite re-render loops
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const selectedProjectRef = useRef(selectedProject);
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
+
+  const teamsRef = useRef(teams);
+  useEffect(() => {
+    teamsRef.current = teams;
+  }, [teams]);
+
   // Toast Stack
   const [toasts, setToasts] = useState([]);
 
@@ -134,6 +188,11 @@ export function AppProvider({ children }) {
             category: s.category || 'General'
           }))
         : [],
+      resume: rawUser.resume || '',
+      resumeStatus: rawUser.resumeStatus || 'NOT_UPLOADED',
+      resumeAnalysisError: rawUser.resumeAnalysisError || '',
+      resumeScore: rawUser.resumeScore || 0,
+      resumeRawText: rawUser.resumeRawText || '',
       extractedSkills: rawUser.extractedSkills || { languages: [], frameworks: [], databases: [], tools: [], softSkills: [] },
       education: Array.isArray(rawUser.education) ? rawUser.education : [],
       projects: Array.isArray(rawUser.projects) ? rawUser.projects : [],
@@ -221,10 +280,14 @@ export function AppProvider({ children }) {
   // Refresh data from backend
   const refreshBackendData = useCallback(async () => {
     try {
+      const currentUser = userRef.current;
+      const currentUid = (currentUser?._id || currentUser?.id)?.toString();
+
       // 1. Fetch Projects
       const projRes = await api.getProjects();
+      let mappedProjects = [];
       if (projRes.success && Array.isArray(projRes.data)) {
-        const mapped = projRes.data.map((p) => {
+        mappedProjects = projRes.data.map((p) => {
           const resolvedOwnerId = (
             p.ownerId?._id ||
             p.ownerId?.id ||
@@ -234,17 +297,23 @@ export function AppProvider({ children }) {
             (typeof p.owner === 'string' ? p.owner : null)
           )?.toString();
 
+          const reqSkills = (p.requiredSkills || []).map((s) => (typeof s === 'string' ? s : s.name));
+          let matchScore = p.matchPercentage;
+          if (matchScore === undefined && currentUser?.skills) {
+            matchScore = calculateWorkerProjectMatch(currentUser.skills, reqSkills).matchPercentage;
+          }
+
           return {
             ...p,
             id: p._id || p.id,
             ownerId: resolvedOwnerId || p.ownerId || p.owner,
-            matchPercentage: p.matchPercentage !== undefined ? p.matchPercentage : 80,
-            requiredSkills: (p.requiredSkills || []).map((s) => (typeof s === 'string' ? s : s.name))
+            matchPercentage: matchScore !== undefined ? matchScore : 0,
+            requiredSkills: reqSkills
           };
         });
-        setProjects(mapped);
-        if (mapped.length > 0) {
-          setSelectedProject((prev) => mapped.find((m) => m.id === (prev?.id || prev?._id)) || mapped[0]);
+        setProjects(mappedProjects);
+        if (mappedProjects.length > 0) {
+          setSelectedProject((prev) => mappedProjects.find((m) => (m.id || m._id) === (prev?.id || prev?._id)) || mappedProjects[0]);
         } else {
           setSelectedProject(null);
         }
@@ -254,62 +323,6 @@ export function AppProvider({ children }) {
       const teamsRes = await api.getMyTeams();
       if (teamsRes.success && Array.isArray(teamsRes.data)) {
         setTeams(teamsRes.data);
-        if (teamsRes.data.length > 0) {
-          const currentProjId = (selectedProject?._id || selectedProject?.id)?.toString();
-          const targetTeam = (currentProjId
-            ? teamsRes.data.find(
-                (t) =>
-                  (t.project?._id || t.project?.id || t.project)?.toString() ===
-                  currentProjId
-              )
-            : null) || teamsRes.data[0];
-
-          const ownerObj = targetTeam.owner;
-          const ownerMember = ownerObj
-            ? [{
-                id: ownerObj._id || ownerObj,
-                _id: ownerObj._id || ownerObj,
-                name: `${ownerObj.name || 'Owner'} (Owner)`,
-                role: 'Project Owner',
-                avatar: ownerObj.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-                status: 'Owner'
-              }]
-            : [];
-
-          const workerMembers = (targetTeam.members || []).map((m) => ({
-            id: m.user?._id || m.user,
-            _id: m.user?._id || m.user,
-            name: m.user?.name || 'Member',
-            role: m.role || 'Specialist',
-            avatar: m.user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-            status: 'Accepted'
-          }));
-
-          const allMembers = [...ownerMember, ...workerMembers];
-
-          setActiveTeam({
-            ...targetTeam,
-            id: targetTeam._id,
-            project: targetTeam.project?.title || targetTeam.name,
-            overallScore: targetTeam.skillCoverage?.percentage || 85,
-            coverage: targetTeam.skillCoverage?.percentage || 100,
-            successPrediction: Math.min(100, (targetTeam.skillCoverage?.percentage || 85) + 5),
-            members: allMembers,
-            workerMembers: workerMembers
-          });
-
-          const currentUid = (user?._id || user?.id)?.toString();
-          setWorkspaceData({
-            tasks: (targetTeam.tasks || []).map((t) => ({ ...t, id: t._id || t.id })),
-            messages: (targetTeam.messages || []).map((m) =>
-              formatChatMessage(m, currentUid, targetTeam)
-            ),
-            files: (targetTeam.files || []).map((f) => ({ ...f, id: f._id || f.id }))
-          });
-        } else {
-          setActiveTeam(null);
-          setWorkspaceData({ tasks: [], messages: [], files: [] });
-        }
       }
 
       // 3. Fetch User's Notifications
@@ -317,11 +330,10 @@ export function AppProvider({ children }) {
       if (notifsRes.success && Array.isArray(notifsRes.data)) {
         setNotifications(
           notifsRes.data.map((n) => {
-            // Map backend notification type to filter categories ('team', 'project', 'ai', 'system')
             let category = 'system';
             if (['APPLICATION_RECEIVED', 'APPLICATION_ACCEPTED', 'APPLICATION_REJECTED', 'PROJECT_CLOSED'].includes(n.type)) {
               category = 'project';
-            } else if (['TASK_STARTED', 'TASK_COMPLETED', 'FILE_SHARED', 'TEAM_INVITATION', 'TEAM_JOINED'].includes(n.type)) {
+            } else if (['TASK_STARTED', 'TASK_COMPLETED', 'FILE_SHARED', 'TEAM_INVITATION', 'TEAM_JOINED', 'TEAM_LEADER_ASSIGNED', 'TASK_ASSIGNED'].includes(n.type)) {
               category = 'team';
             } else if (['AI_UPDATE', 'RESUME_PARSED'].includes(n.type)) {
               category = 'ai';
@@ -338,7 +350,7 @@ export function AppProvider({ children }) {
               relatedProject: n.relatedProject,
               relatedEntity: n.relatedEntity,
               sender: n.sender,
-              type: category, // Matches existing UI filter IDs: 'all' | 'team' | 'project' | 'ai' | 'system'
+              type: category,
               time: new Date(n.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             };
           })
@@ -349,6 +361,63 @@ export function AppProvider({ children }) {
       const appsRes = await api.getMyApplications();
       if (appsRes.success && Array.isArray(appsRes.data)) {
         setMyApplications(appsRes.data);
+      }
+
+      // 5. Fetch Teammate Candidates from real MongoDB workers
+      const workersRes = await api.getWorkers();
+      if (workersRes.success && Array.isArray(workersRes.data)) {
+        const otherWorkers = workersRes.data.filter(
+          (w) => (w._id || w.id)?.toString() !== currentUid
+        );
+
+        const targetProj = selectedProjectRef.current || (mappedProjects.length > 0 ? mappedProjects[0] : null);
+        const targetSkills = (targetProj?.requiredSkills || []).map((s) =>
+          typeof s === 'string' ? s : s.name
+        );
+
+        const realCandidates = otherWorkers.map((w) => {
+          const wSkills = Array.isArray(w.skills) ? w.skills : [];
+          const ext = w.extractedSkills || {};
+          const extList = [
+            ...(ext.languages || []),
+            ...(ext.frameworks || []),
+            ...(ext.databases || []),
+            ...(ext.tools || [])
+          ];
+          const allSkillsMap = new Map();
+          wSkills.forEach((s) => {
+            const name = typeof s === 'string' ? s : s.name;
+            if (name) allSkillsMap.set(name.toLowerCase(), name);
+          });
+          extList.forEach((s) => {
+            if (s && !allSkillsMap.has(s.toLowerCase())) allSkillsMap.set(s.toLowerCase(), s);
+          });
+          const combinedSkills = Array.from(allSkillsMap.values());
+
+          const match = calculateWorkerProjectMatch(wSkills.length > 0 ? wSkills : extList, targetSkills);
+
+          return {
+            id: w._id || w.id,
+            _id: w._id || w.id,
+            name: w.name,
+            role: w.title || (w.role === 'OWNER' ? 'Project Owner' : 'Technical Specialist'),
+            avatar: w.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+            compatibility: match.matchPercentage,
+            skills: combinedSkills.length > 0 ? combinedSkills : (w.interests || []),
+            experience: w.experienceYears ? `${w.experienceYears} Years • ${w.experienceLevel || 'Specialist'}` : (w.experienceLevel || 'Developer'),
+            bio: w.bio || '',
+            github: w.github || '',
+            linkedin: w.linkedin || '',
+            matchReason: match.matchingSkills.length > 0
+              ? `Matches ${match.matchingSkills.join(', ')} required for this project.`
+              : 'Available specialist in developer pool.',
+            status: w.availability || 'Available'
+          };
+        });
+
+        setCandidates(realCandidates);
+      } else {
+        setCandidates([]);
       }
     } catch (e) {
       console.warn('Could not sync all backend items live:', e.message);
@@ -385,59 +454,131 @@ export function AppProvider({ children }) {
     };
 
     verifyAuth();
-  }, [refreshBackendData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Keep activeTeam synced with selectedProject whenever selectedProject or teams list changes
-  useEffect(() => {
-    if (selectedProject && teams.length > 0) {
-      const projId = (selectedProject._id || selectedProject.id)?.toString();
-      const matchingTeam = teams.find(
-        (t) => (t.project?._id || t.project?.id || t.project)?.toString() === projId
+  // Isolate and load workspace for a specific project ID
+  const loadWorkspaceForProject = useCallback(async (targetProjectId) => {
+    if (!targetProjectId) return null;
+    const currentUid = (userRef.current?._id || userRef.current?.id)?.toString();
+
+    let targetTeam = null;
+    try {
+      const res = await api.getTeamById(targetProjectId);
+      if (res.success && res.data) {
+        targetTeam = res.data.team || res.data;
+      }
+    } catch (e) {
+      console.warn('Could not fetch team by ID for workspace:', e.message);
+    }
+
+    if (!targetTeam) {
+      targetTeam = (teamsRef.current || []).find(
+        (t) =>
+          (t.project?._id || t.project?.id || t.project)?.toString() === targetProjectId.toString() ||
+          (t._id || t.id)?.toString() === targetProjectId.toString()
       );
-      if (matchingTeam) {
-        const ownerObj = matchingTeam.owner;
-        const ownerMember = ownerObj
-          ? [{
-              id: ownerObj._id || ownerObj,
-              _id: ownerObj._id || ownerObj,
-              name: `${ownerObj.name || 'Owner'} (Owner)`,
-              role: 'Project Owner',
-              avatar: ownerObj.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-              status: 'Owner'
-            }]
-          : [];
+    }
 
-        const workerMembers = (matchingTeam.members || []).map((m) => ({
-          id: m.user?._id || m.user,
-          _id: m.user?._id || m.user,
-          name: m.user?.name || 'Member',
-          role: m.role || 'Specialist',
-          avatar: m.user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-          status: 'Accepted'
-        }));
+    if (targetTeam) {
+      // 1. Resolve real Project Owner (e.g. Waran) - isolated from members array
+      const ownerObj = targetTeam.owner ? {
+        id: (targetTeam.owner._id || targetTeam.owner).toString(),
+        _id: (targetTeam.owner._id || targetTeam.owner).toString(),
+        name: targetTeam.owner.name || 'Owner',
+        email: targetTeam.owner.email,
+        avatar: targetTeam.owner.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+        role: 'Project Owner'
+      } : null;
 
-        setActiveTeam({
-          ...matchingTeam,
-          id: matchingTeam._id,
-          project: matchingTeam.project?.title || matchingTeam.name,
-          overallScore: matchingTeam.skillCoverage?.percentage || 85,
-          coverage: matchingTeam.skillCoverage?.percentage || 100,
-          successPrediction: Math.min(100, (matchingTeam.skillCoverage?.percentage || 85) + 5),
-          members: [...ownerMember, ...workerMembers],
-          workerMembers: workerMembers
-        });
+      // 2. Resolve real Team Members (e.g. Premkumar S) - deduplicated strictly by user._id
+      const seenMemberIds = new Set();
+      const realWorkerMembers = [];
+      for (const m of (targetTeam.members || [])) {
+        const uId = (m.user?._id || m.user || m._id || m.id)?.toString();
+        if (uId && !seenMemberIds.has(uId)) {
+          seenMemberIds.add(uId);
+          realWorkerMembers.push({
+            id: uId,
+            _id: uId,
+            name: m.user?.name || m.name || 'Member',
+            email: m.user?.email || m.email,
+            role: m.role || 'Specialist',
+            avatar: m.user?.avatar || m.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+            status: 'Accepted'
+          });
+        }
+      }
 
-        const currentUid = (user?._id || user?.id)?.toString();
+      const coverageScore = targetTeam.skillCoverage?.percentage !== undefined ? targetTeam.skillCoverage.percentage : 0;
+
+      const formattedTeam = {
+        ...targetTeam,
+        id: targetTeam._id,
+        _id: targetTeam._id,
+        project: targetTeam.project?.title || targetTeam.project?.name || targetTeam.name,
+        overallScore: coverageScore,
+        coverage: coverageScore,
+        successPrediction: Math.min(100, coverageScore + 5),
+        owner: ownerObj,
+        members: realWorkerMembers, // ONLY real team members from MongoDB!
+        workerMembers: realWorkerMembers
+      };
+
+      setActiveTeam(formattedTeam);
+
+      // Fetch fresh tasks, messages, and files for this specific project/team from backend
+      try {
+        const teamIdentifier = targetTeam._id || targetProjectId;
+        const [tasksRes, msgsRes, filesRes] = await Promise.all([
+          api.getTeamTasks(teamIdentifier),
+          api.getTeamMessages(teamIdentifier),
+          api.getTeamFiles(teamIdentifier)
+        ]);
+
+        const rawTasks = (tasksRes.success && Array.isArray(tasksRes.data)) ? tasksRes.data : (targetTeam.tasks || []);
+        const rawMsgs = (msgsRes.success && Array.isArray(msgsRes.data)) ? msgsRes.data : (targetTeam.messages || []);
+        const rawFiles = (filesRes.success && Array.isArray(filesRes.data)) ? filesRes.data : (targetTeam.files || []);
+
         setWorkspaceData({
-          tasks: (matchingTeam.tasks || []).map((t) => ({ ...t, id: t._id || t.id })),
-          messages: (matchingTeam.messages || []).map((m) =>
-            formatChatMessage(m, currentUid, matchingTeam)
-          ),
-          files: (matchingTeam.files || []).map((f) => ({ ...f, id: f._id || f.id }))
+          tasks: rawTasks.map((t) => ({
+            ...t,
+            id: t._id || t.id,
+            _id: t._id || t.id,
+            projectId: targetTeam.project?._id || targetTeam.project,
+            assignedTo: t.assignee
+          })),
+          messages: rawMsgs.map((m) => formatChatMessage(m, currentUid, targetTeam)),
+          files: rawFiles.map((f) => ({ ...f, id: f._id || f.id }))
+        });
+      } catch (err) {
+        setWorkspaceData({
+          tasks: (targetTeam.tasks || []).map((t) => ({
+            ...t,
+            id: t._id || t.id,
+            _id: t._id || t.id,
+            projectId: targetTeam.project?._id || targetTeam.project,
+            assignedTo: t.assignee
+          })),
+          messages: (targetTeam.messages || []).map((m) => formatChatMessage(m, currentUid, targetTeam)),
+          files: (targetTeam.files || []).map((f) => ({ ...f, id: f._id || f.id }))
         });
       }
+
+      return formattedTeam;
+    } else {
+      setActiveTeam(null);
+      setWorkspaceData({ tasks: [], messages: [], files: [] });
+      return null;
     }
-  }, [selectedProject, teams, user, formatChatMessage]);
+  }, [formatChatMessage]);
+
+  // Send teammate request to a candidate
+  const sendTeammateRequest = (candidate) => {
+    const candidateId = candidate.id || candidate._id;
+    setSentRequests((prev) => [...prev, { candidateId, time: new Date() }]);
+    addToast('Request Sent', `Teammate invitation sent to ${candidate.name}.`, 'success');
+  };
 
   // Login handler
   const loginUser = async (credentials) => {
@@ -654,6 +795,23 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Assign Team Leader (Owner)
+  const assignTeamLeader = async (teamId, leaderId) => {
+    try {
+      const res = await api.assignTeamLeader(teamId, leaderId);
+      if (res.success && res.data?.team) {
+        addToast('Team Leader Assigned! ⭐', 'The team member has been designated as the Team Leader.', 'success');
+        await refreshBackendData();
+        return { success: true, team: res.data.team };
+      }
+      throw new Error(res.message || 'Failed to assign team leader');
+    } catch (error) {
+      const msg = error.response?.data?.message || error.message || 'Failed to assign team leader.';
+      addToast('Assignment Failed', msg, 'error');
+      return { success: false, message: msg };
+    }
+  };
+
   // Upload Resume (Worker)
   const uploadWorkerResume = async (file) => {
     try {
@@ -663,15 +821,44 @@ export function AppProvider({ children }) {
           ...prev,
           resume: res.data?.resume,
           resumeStatus: res.data?.resumeStatus || 'UPLOADED',
-          resumeScore: 0,
+          resumeAnalysisError: res.data?.resumeAnalysisError || '',
+          resumeScore: res.data?.resumeScore || 0,
+          extractedSkills: res.data?.extractedSkills || prev.extractedSkills,
           profileCompletion: res.data?.profileCompletion || prev.profileCompletion
         }));
-        addToast('Resume Uploaded! 📄', 'Resume saved securely. Status set to UPLOADED.', 'success');
+        addToast('Resume Uploaded! 📄', res.message || 'Resume saved securely.', 'success');
         return { success: true, data: res.data };
       }
     } catch (error) {
       const msg = error.response?.data?.message || 'Failed to upload resume.';
       addToast('Upload Failed', msg, 'error');
+      return { success: false, message: msg };
+    }
+  };
+
+  // Trigger or Re-trigger Hugging Face AI Skill Extraction
+  const analyzeWorkerResume = async () => {
+    try {
+      const res = await api.analyzeResume();
+      if (res.success) {
+        setUser((prev) => ({
+          ...prev,
+          resumeStatus: res.data?.resumeStatus || 'ANALYZED',
+          resumeAnalysisError: '',
+          extractedSkills: res.data?.extractedSkills || prev.extractedSkills
+        }));
+        addToast('Skills Extracted! 🤖', res.message || 'Hugging Face AI skill extraction complete.', 'success');
+        return { success: true, data: res.data };
+      }
+      throw new Error(res.message || 'Analysis failed');
+    } catch (error) {
+      const msg = error.response?.data?.message || error.message || 'Failed to analyze resume with Hugging Face.';
+      setUser((prev) => ({
+        ...prev,
+        resumeStatus: 'ANALYSIS_FAILED',
+        resumeAnalysisError: msg
+      }));
+      addToast('Analysis Failed', msg, 'error');
       return { success: false, message: msg };
     }
   };
@@ -913,7 +1100,9 @@ export function AppProvider({ children }) {
         acceptWorkerApplication,
         rejectWorkerApplication,
         acceptTeamInviteAction,
+        assignTeamLeader,
         uploadWorkerResume,
+        analyzeWorkerResume,
         projects,
         setProjects,
         myProjects,
@@ -938,13 +1127,13 @@ export function AppProvider({ children }) {
         notifications,
         markNotificationAsRead,
         markAllNotificationsAsRead,
+        loadWorkspaceForProject,
+        sendTeammateRequest,
         refreshBackendData,
         toasts,
         addToast,
         removeToast,
-        theme,
-        setTheme,
-        toggleTheme
+        setTheme
       }}
     >
       <div className={theme}>{children}</div>

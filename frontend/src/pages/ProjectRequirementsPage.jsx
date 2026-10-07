@@ -31,14 +31,9 @@ export default function ProjectRequirementsPage() {
     budgetAmount: 4000
   });
 
-  const categories = [
-    'All',
-    'Computer Vision & AI',
-    'FinTech & Cloud Infrastructure',
-    'Healthcare & SaaS',
-    'Developer Tools & SaaS',
-    'Web3 & Distributed Systems'
-  ];
+  // Derive categories dynamically from real projects in MongoDB
+  const projectCategories = Array.from(new Set(projects.map((p) => p.category).filter(Boolean)));
+  const categories = ['All', ...projectCategories];
 
   const isOwner = user?.role === 'OWNER';
 
@@ -71,8 +66,8 @@ export default function ProjectRequirementsPage() {
       setNewProject({
         title: '',
         description: '',
-        category: 'Computer Vision & AI',
-        skillsInput: 'React, Node.js, MongoDB, Tailwind CSS',
+        category: 'Web Development',
+        skillsInput: 'React, Node.js, MongoDB',
         teamSize: 4,
         duration: 6,
         durationUnit: 'weeks',
@@ -91,10 +86,11 @@ export default function ProjectRequirementsPage() {
   };
 
   const filteredProjects = projects.filter((p) => {
-    const titleMatch = p.title?.toLowerCase().includes(searchTerm.toLowerCase());
-    const descMatch = p.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const pTitle = p.title || p.name || '';
+    const titleMatch = pTitle.toLowerCase().includes(searchTerm.toLowerCase());
+    const descMatch = (p.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const skillsMatch = (p.requiredSkills || []).some((s) =>
-      (typeof s === 'string' ? s : s.name).toLowerCase().includes(searchTerm.toLowerCase())
+      (typeof s === 'string' ? s : s.name || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const matchesSearch = titleMatch || descMatch || skillsMatch;

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Check, X, Sparkles } from 'lucide-react';
 
 export default function SkillTag({
@@ -18,10 +18,10 @@ export default function SkillTag({
       case 'missing':
         return 'bg-rose-500/10 text-rose-300 border-rose-500/25';
       case 'ai':
-        return 'bg-indigo-500/10 text-indigo-300 border-indigo-500/25';
+        return 'skill-tag-ai bg-indigo-500/10 text-indigo-300 border-indigo-500/25';
       case 'neutral':
       default:
-        return 'bg-[#111113] text-[#D4D4D8] border-[#27272A] hover:border-[#3F3F46]';
+        return 'skill-tag-neutral bg-[#111113] text-[#D4D4D8] border-[#27272A] hover:border-[#3F3F46]';
     }
   };
 
@@ -38,12 +38,12 @@ export default function SkillTag({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 border transition-colors ${getStyles()} ${sizeClasses}`}
+      className={`skill-tag-item inline-flex items-center gap-1.5 border transition-colors ${getStyles()} ${sizeClasses}`}
     >
       {getIcon()}
       <span>{displayName}</span>
       {level && (
-        <span className="ml-0.5 px-1 py-0.2 rounded text-[10px] font-mono text-[#A1A1AA] bg-[#1A1A1E]">
+        <span className="skill-level-badge ml-0.5 px-1 py-0.2 rounded text-[10px] font-mono text-[#A1A1AA] bg-[#1A1A1E]">
           {level}
         </span>
       )}
@@ -57,10 +57,9 @@ export default function SkillTag({
           className="ml-0.5 text-[#71717A] hover:text-rose-400 transition-colors focus:outline-none"
           aria-label={`Remove ${name}`}
         >
-          ×
+          ✕
         </button>
       )}
     </span>
   );
 }
-

@@ -184,6 +184,11 @@ export const api = {
     return response.data;
   },
 
+  assignTeamLeader: async (teamId, leaderId) => {
+    const response = await apiClient.put(`/teams/${teamId}/leader`, { leaderId });
+    return response.data;
+  },
+
   removeTeamMember: async (teamId, userId) => {
     const response = await apiClient.delete(`/teams/${teamId}/members/${userId}`);
     return response.data;
@@ -299,6 +304,70 @@ export const api = {
   getResumeDetails: async () => {
     const response = await apiClient.get('/resume/me');
     return response.data;
+  },
+
+  analyzeResume: async () => {
+    const response = await apiClient.post('/resume/analyze');
+    return response.data;
+  },
+
+  getResumeFileUrl: () => {
+    const token = localStorage.getItem('tm_token') || localStorage.getItem('token');
+    return `${API_BASE_URL}/resume/file?token=${encodeURIComponent(token || '')}`;
+  },
+
+  viewResume: async (fileNameFallback = 'resume') => {
+    try {
+      const response = await apiClient.get('/resume/file', {
+        responseType: 'blob'
+      });
+
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const blob = new Blob([response.data], { type: contentType });
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      let downloadFileName = fileNameFallback;
+      const disposition = response.headers['content-disposition'];
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (match && match[1]) {
+          downloadFileName = match[1].replace(/['"]/g, '').trim();
+        }
+      }
+
+      if (contentType.includes('pdf') || contentType.includes('text/plain')) {
+        const win = window.open(blobUrl, '_blank');
+        if (!win) {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = downloadFileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+      } else {
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = downloadFileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000);
+      }
+
+      return { success: true, fileName: downloadFileName };
+    } catch (err) {
+      if (err.response?.data instanceof Blob) {
+        try {
+          const errorText = await err.response.data.text();
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.message || 'Resume file is currently unavailable.');
+        } catch (parseErr) {
+          throw new Error('Resume file is currently unavailable.');
+        }
+      }
+      throw err;
+    }
   }
 };
 

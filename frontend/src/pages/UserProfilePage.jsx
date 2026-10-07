@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { User, Code2, Globe, Download, Award, Briefcase, GraduationCap, Save, Edit3, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import DashboardLayout from '../components/common/DashboardLayout';
@@ -246,7 +246,7 @@ export default function UserProfilePage() {
                   <p className="text-indigo-400 text-[11px] mt-0.5">{p.role}</p>
                   <div className="flex flex-wrap gap-1 mt-2">
                     {p.tech?.map((t) => (
-                      <span key={t} className="text-[10px] bg-[#141414] text-[#A1A1AA] px-1.5 py-0.2 rounded border border-[#1F1F23]">
+                      <span key={t} className="skill-tag-item skill-tag-neutral text-[10px] bg-[#141414] text-[#A1A1AA] px-1.5 py-0.2 rounded border border-[#1F1F23]">
                         {t}
                       </span>
                     ))}

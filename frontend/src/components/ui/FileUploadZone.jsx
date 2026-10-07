@@ -22,11 +22,11 @@ export default function FileUploadZone({ onFileSelect, acceptedFormats = '.pdf,.
     setError('');
     if (!file) return;
 
-    const validExtensions = ['pdf', 'docx', 'doc'];
+    const validExtensions = ['pdf', 'docx', 'doc', 'txt', 'rtf'];
     const fileExt = file.name.split('.').pop().toLowerCase();
 
     if (!validExtensions.includes(fileExt)) {
-      setError('Invalid file format. Please upload a PDF or DOCX document.');
+      setError('Invalid file format. Please upload a PDF, DOCX, DOC, TXT, or RTF document.');
       return;
     }
 
@@ -74,7 +74,7 @@ export default function FileUploadZone({ onFileSelect, acceptedFormats = '.pdf,.
         <input
           ref={inputRef}
           type="file"
-          accept={acceptedFormats}
+          accept=".pdf,.docx,.doc,.txt,.rtf"
           onChange={handleChange}
           className="hidden"
         />
@@ -112,7 +112,7 @@ export default function FileUploadZone({ onFileSelect, acceptedFormats = '.pdf,.
               Drag and drop your resume here
             </h4>
             <p className="text-xs text-[#71717A] max-w-sm mb-4 leading-relaxed">
-              Supports PDF and DOCX (up to 10 MB). The AI engine parses skills, experience, and project matches.
+              Supports PDF, DOCX, DOC, TXT, RTF (up to 10 MB). Text is extracted and ready for AI skill analysis.
             </p>
             <Button variant="primary" size="sm">
               Browse Document

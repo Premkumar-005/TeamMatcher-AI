@@ -68,6 +68,9 @@ export default function App() {
 
             {/* 12. Team Workspace */}
             <Route path="/team-workspace" element={<TeamWorkspacePage />} />
+            <Route path="/team-workspace/:projectId" element={<TeamWorkspacePage />} />
+            <Route path="/worker/team-workspace" element={<TeamWorkspacePage />} />
+            <Route path="/worker/team-workspace/:projectId" element={<TeamWorkspacePage />} />
 
             {/* 13. AI Insights */}
             <Route path="/ai-insights" element={<AiInsightsPage />} />
